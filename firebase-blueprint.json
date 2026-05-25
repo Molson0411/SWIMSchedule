@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["Coach", "Admin"] },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A swimming lesson entry.",
+      "type": "object",
+      "properties": {
+        "coachId": { "type": "string" },
+        "coachName": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "poolType": { "type": "string", "enum": ["25m", "Small"] },
+        "lessonType": { "type": "string", "enum": ["1:1", "1:2", "1:3", "Group"] },
+        "studentCount": { "type": "integer" },
+        "studentNames": { "type": "string" },
+        "lane": { "type": "integer", "description": "1 to 6, only for 25m pool" },
+        "status": { "type": "string", "enum": ["Pending", "Approved"] },
+        "checkedIn": { "type": "boolean" },
+        "checkInTime": { "type": "string", "format": "date-time" },
+        "adminNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coachId", "date", "startTime", "endTime", "poolType", "lessonType", "studentCount", "status"]
+    },
+    "CoachAvailability": {
+      "title": "Coach Availability",
+      "description": "Weekly working hours and preferred time slots for a coach.",
+      "type": "object",
+      "properties": {
+        "coachId": { "type": "string" },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "dayOfWeek": { "type": "integer", "description": "0-6" },
+              "startTime": { "type": "string" },
+              "endTime": { "type": "string" },
+              "active": { "type": "boolean" }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coachId", "slots"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of platform users."
+    },
+    "/lessons/{lessonId}": {
+      "schema": "Lesson",
+      "description": "Collection of scheduled swimming lessons."
+    },
+    "/coachAvailability/{coachId}": {
+      "schema": "CoachAvailability",
+      "description": "Working hours for each coach."
+    }
+  }
+}

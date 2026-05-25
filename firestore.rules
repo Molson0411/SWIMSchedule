@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(userId) && 
+        request.resource.data.role == 'Coach'; // Default role
+      allow update: if isSignedIn() && (isAdmin() || (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])));
+    }
+
+    // --- Lessons Collection ---
+    match /lessons/{lessonId} {
+      function isValidLesson(data) {
+        return data.coachId is string &&
+               data.date is string &&
+               data.startTime is string &&
+               data.endTime is string &&
+               data.poolType in ['25m', 'Small'] &&
+               data.lessonType in ['1:1', '1:2', '1:3', 'Group'] &&
+               data.studentCount >= 0 &&
+               data.status in ['Pending', 'Approved'];
+      }
+
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn() && 
+        isValidLesson(request.resource.data) &&
+        request.resource.data.coachId == request.auth.uid &&
+        request.resource.data.checkedIn == false;
+
+      allow update: if isSignedIn() && (
+        // Admin can do anything if valid, or just specific things
+        (isAdmin() && isValidLesson(request.resource.data)) ||
+        // Coach can check in
+        (isOwner(resource.data.coachId) && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkedIn', 'checkInTime', 'updatedAt']) &&
+         request.resource.data.checkedIn == true) ||
+        // Coach can modify lesson details, but status MUST be Pending (unless they don't change anything else)
+        (isOwner(resource.data.coachId) &&
+         isValidLesson(request.resource.data) &&
+         request.resource.data.status == 'Pending')
+      );
+
+      allow delete: if isAdmin() || isOwner(resource.data.coachId);
+    }
+
+    // --- Coach Availability ---
+    match /coachAvailability/{coachId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isAdmin() || isOwner(coachId)) && 
+        request.resource.data.coachId == coachId;
+      allow delete: if isAdmin() || isOwner(coachId);
+    }
+  }
+}
