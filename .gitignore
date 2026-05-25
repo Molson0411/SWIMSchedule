@@ -1,8 +1,64 @@
+# Dependencies
 node_modules/
-build/
+
+# Build output
 dist/
+build/
+.vite/
+.cache/
 coverage/
-.DS_Store
-*.log
-.env*
+
+# Environment and secrets
+.env
+.env.*
 !.env.example
+*.pem
+*.key
+*.crt
+service-account*.json
+firebase-adminsdk*.json
+
+# Firebase local files
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+storage-debug.log
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime and temporary files
+*.pid
+*.seed
+*.tmp
+*.temp
+tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# Package manager caches
+.npm/
+.yarn/
+.pnpm-store/
