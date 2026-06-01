@@ -130,6 +130,38 @@ workflow 會自動執行：
 
 > 注意：GitHub Pages 只能部署靜態前端。`server.ts` 內的 Express API 與 SMTP 寄信功能需要部署到支援 Node.js 後端的平台，例如 Render、Railway、Fly.io 或 VPS。
 
+## 線上寄信設定
+
+線上版部署在 GitHub Pages 時沒有 Node.js 後端，因此寄信功能預設會改用 Firebase 的 `mail` collection。建議搭配 Firebase 官方 Trigger Email Extension 使用。
+
+設定方式：
+
+1. 到 Firebase Console 開啟此專案。
+2. 進入 `Extensions`。
+3. 安裝 `Trigger Email` extension。
+4. 將郵件集合名稱設定為：
+
+   ```text
+   mail
+   ```
+
+5. 依照 extension 指示設定 SMTP，例如 Gmail App Password。
+6. 部署 Firestore rules：
+
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+
+完成後，使用者新增課程時，前端會建立 `mail` 文件，Trigger Email Extension 會負責實際寄出郵件。
+
+如果你另外部署了 Node.js 後端，也可以設定：
+
+```env
+VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
+```
+
+有設定 `VITE_NOTIFY_LESSON_URL` 時，前端會優先呼叫該 API；未設定時，本機會使用 `/api/notify-lesson`，線上 GitHub Pages 會使用 Firebase `mail` collection。
+
 ## 可用指令
 
 | 指令 | 說明 |

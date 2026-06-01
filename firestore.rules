@@ -75,5 +75,18 @@ service cloud.firestore {
         request.resource.data.coachId == coachId;
       allow delete: if isAdmin() || isOwner(coachId);
     }
+
+    // --- Email Queue ---
+    // Intended for the Firebase Trigger Email extension.
+    match /mail/{mailId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasOnly(['to', 'message', 'createdAt', 'type']) &&
+        request.resource.data.to == request.auth.token.email &&
+        request.resource.data.type == 'lesson-confirmation' &&
+        request.resource.data.message.subject is string &&
+        request.resource.data.message.text is string &&
+        request.resource.data.message.html is string;
+      allow read, update, delete: if false;
+    }
   }
 }
