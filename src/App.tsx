@@ -7,6 +7,7 @@ import { PoolMonitor } from './components/PoolMonitor';
 import { MonthlyReport } from './components/MonthlyReport';
 import { UserManagement } from './components/UserManagement';
 import { WeeklyVenueSchedule } from './components/WeeklyVenueSchedule';
+import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
 import { Lesson } from './types';
 import { TIME_SLOTS } from './lib/scheduling';
@@ -337,6 +338,11 @@ const handleUpdateName = async () => {
         onClose={() => setIsFormOpen(false)} 
         existingLessons={lessons}
         editLesson={editingLesson}
+      />
+
+      <OnboardingModal
+        userId={user.uid}
+        isAuthenticated={Boolean(user)}
       />
     </div>
   );
