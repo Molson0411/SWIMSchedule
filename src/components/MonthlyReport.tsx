@@ -16,8 +16,6 @@ export function MonthlyReport() {
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'mine'>('mine');
 
-  const isAdmin = profile?.role === 'Admin';
-
   const fetchMonthlyData = async () => {
     if (!profile) return;
     setLoading(true);
@@ -26,7 +24,7 @@ export function MonthlyReport() {
       const end = format(endOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
 
       let q;
-      if (isAdmin && viewMode === 'all') {
+      if (viewMode === 'all') {
         q = query(
           collection(db, 'lessons'),
           where('date', '>=', start),
@@ -112,7 +110,7 @@ export function MonthlyReport() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    const filename = isAdmin && viewMode === 'all' 
+    const filename = viewMode === 'all' 
       ? `游泳課程全體報表_${selectedMonth}.csv`
       : `游泳課程個人報表_${profile?.displayName}_${selectedMonth}.csv`;
     link.setAttribute('download', filename);
@@ -134,7 +132,7 @@ export function MonthlyReport() {
           />
         </div>
 
-        {isAdmin && (
+        {profile && (
           <div className="flex p-1 bg-slate-100 rounded-xl w-full">
             <button
               onClick={() => setViewMode('mine')}

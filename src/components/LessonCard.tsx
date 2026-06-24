@@ -7,11 +7,10 @@ import { lessonsService } from '../services/lessonsService';
 
 interface LessonCardProps {
   lesson: Lesson;
-  isAdmin: boolean;
   onEdit?: () => void;
 }
 
-export const LessonCard: React.FC<LessonCardProps> = ({ lesson, isAdmin, onEdit }) => {
+export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
   const [canCheckIn, setCanCheckIn] = useState(false);
   const [isMissed, setIsMissed] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -31,7 +30,7 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, isAdmin, onEdit 
   }, [now, lesson]);
 
   const handleCheckIn = async () => {
-    if (!canCheckIn && !isAdmin) return;
+    if (lesson.checkedIn) return;
     try {
       await lessonsService.updateLesson(lesson.id, {
         checkedIn: true,
@@ -145,14 +144,14 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, isAdmin, onEdit 
             e.stopPropagation();
             handleCheckIn();
           }}
-          disabled={!canCheckIn && !isAdmin}
+          disabled={lesson.checkedIn}
           className={cn(
             "h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
             lesson.checkedIn 
               ? "bg-slate-200 text-slate-400" 
               : canCheckIn 
                 ? "bg-primary text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95" 
-                : "bg-slate-50 text-slate-300 border border-slate-200 cursor-not-allowed"
+                : "bg-primary text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95"
           )}
         >
           簽到

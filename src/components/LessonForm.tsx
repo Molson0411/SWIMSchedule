@@ -387,7 +387,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
                 <input type="text" {...register('studentNames')} placeholder="輸入學生姓名或備註" className={inputClassName} />
               </Field>
 
-              {profile?.role === 'Admin' && (
+              {profile && (
                 <>
                   <Field label="審核狀態">
                     <div className="grid grid-cols-2 gap-3">

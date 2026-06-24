@@ -119,8 +119,6 @@ function MainApp() {
     return <LoginScreen signIn={signIn} />;
   }
 
-  const isAdmin = profile?.role === 'Admin';
-
   const changeDate = (days: number) => {
     const date = new Date(selectedDate);
     date.setDate(date.getDate() + days);
@@ -128,9 +126,6 @@ function MainApp() {
   };
 
   const handleEditLesson = (lesson: Lesson) => {
-    const isOwner = lesson.coachId === profile?.uid;
-    if (!isAdmin && !isOwner) return;
-
     setEditingLesson(lesson);
     setIsFormOpen(true);
   };
@@ -183,7 +178,7 @@ function MainApp() {
               <h1 className="text-lg font-black tracking-tight text-slate-900 leading-tight">{pageTitle}</h1>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 {profile?.displayName || profile?.email || '使用者'} /{' '}
-                <span className="text-green-600">{isAdmin ? '管理員' : '教練'}</span>
+              <span className="text-green-600">已登入</span>
               </p>
             </div>
           </div>
@@ -233,7 +228,6 @@ function MainApp() {
                   <LessonCard
                     key={lesson.id}
                     lesson={lesson}
-                    isAdmin={isAdmin}
                     onEdit={() => handleEditLesson(lesson)}
                   />
                 ))
@@ -299,7 +293,7 @@ function MainApp() {
             </motion.div>
           )}
 
-          {activeTab === 'admin' && isAdmin && (
+          {activeTab === 'admin' && (
             <motion.div
               key="admin"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -368,7 +362,7 @@ function MainApp() {
                 )}
 
                 <div className="mt-4 px-4 py-1 bg-green-600 text-white text-[10px] font-bold rounded-full uppercase tracking-widest shadow-lg shadow-green-100">
-                  {isAdmin ? '管理員' : '教練'}
+                  已登入
                 </div>
               </div>
 
@@ -399,7 +393,7 @@ function MainApp() {
         </button>
       )}
 
-      <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} isAdmin={isAdmin} />
+      <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <LessonForm
         isOpen={isFormOpen}
