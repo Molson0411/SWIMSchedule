@@ -201,6 +201,55 @@ VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
 - `lessonsService.createLesson()` 會在寫入前移除 `id` 與所有 `undefined` 欄位。
 - 選填欄位如 `studentNames`、`adminNote` 會以空字串儲存。
 - 小池課程不需要泳道時，`lane` 會以 `null` 儲存。
+## 教練個人時間防撞修復紀錄
+
+### 防止同一教練同日同時段重複排課
+
+課程送出前已加入 Firestore 非同步檢查，會先查詢同一位教練在同一天的既有課程，再用分鐘數比較是否時間重疊。
+
+Firestore 查詢條件：
+
+```ts
+query(
+  collection(db, 'lessons'),
+  where('coachId', '==', coachId),
+  where('date', '==', date)
+)
+```
+
+時間重疊公式：
+
+```ts
+newStart < existingEnd && newEnd > existingStart
+```
+
+送出流程：
+
+- 表單先完成本機欄位檢查。
+- 再使用 `lessonsService.checkTimeConflict()` 查詢該教練同日課程。
+- 若發現重疊，顯示：「您在這個時段已經有排課了，請選擇其他時間！」
+- 發現衝突時直接 `return`，不執行 Firestore 寫入。
+- 沒有衝突時，才繼續原本的新增或更新流程。
+
+核心程式：
+
+```ts
+const hasCoachConflict = await lessonsService.checkTimeConflict({
+  coachId: lesson.coachId,
+  date: lesson.date,
+  startTime: lesson.startTime,
+  endTime: lesson.endTime,
+  excludeLessonId: editLesson?.id,
+});
+
+if (hasCoachConflict) {
+  const message = '您在這個時段已經有排課了，請選擇其他時間！';
+  setError(message);
+  window.alert(message);
+  return;
+}
+```
+
 ## Firestore 編輯權限修復紀錄
 
 ### 課程編輯 `Missing or insufficient permissions`

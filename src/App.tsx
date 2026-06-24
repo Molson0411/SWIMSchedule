@@ -28,6 +28,17 @@ import { getExternalBrowserUrl, isInAppBrowser } from './lib/utils';
 function LoginScreen({ signIn }: { signIn: () => Promise<void> }) {
   const isBlockedLoginBrowser = isInAppBrowser();
   const externalBrowserUrl = getExternalBrowserUrl();
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoginError(null);
+      await signIn();
+    } catch (error) {
+      console.error('Google sign-in failed:', error);
+      setLoginError('若登入視窗未跳出，請確認未開啟無痕模式並允許瀏覽器彈出視窗。');
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col items-center justify-center bg-bg-ivory p-8 text-center">
@@ -36,6 +47,12 @@ function LoginScreen({ signIn }: { signIn: () => Promise<void> }) {
       </div>
       <h1 className="text-3xl font-bold text-gray-900 mb-2">游泳排程管理系統</h1>
       <p className="text-gray-500 mb-10">請先登入以開始管理您的課程</p>
+
+      {loginError && (
+        <div className="mb-4 w-full max-w-sm rounded-2xl border border-red-100 bg-red-50 p-4 text-left text-sm font-bold leading-6 text-red-600">
+          {loginError}
+        </div>
+      )}
 
       {isBlockedLoginBrowser ? (
         <div className="w-full max-w-sm rounded-3xl bg-[#2a0726] p-5 text-left shadow-2xl">
@@ -58,7 +75,7 @@ function LoginScreen({ signIn }: { signIn: () => Promise<void> }) {
         </div>
       ) : (
         <button
-          onClick={signIn}
+          onClick={handleGoogleSignIn}
           className="w-full max-w-sm h-14 bg-green-600 text-white rounded-2xl font-bold shadow-lg shadow-green-100 flex items-center justify-center gap-3 active:scale-95 transition-transform"
         >
           <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" />

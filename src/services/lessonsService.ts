@@ -7,6 +7,7 @@ import {
   query, 
   where, 
   onSnapshot,
+  getDocs,
   orderBy,
   serverTimestamp,
   Timestamp
@@ -36,6 +37,25 @@ function removeUndefinedFields<T extends Record<string, any>>(data: T) {
   return Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== undefined)
   ) as Partial<T>;
+}
+
+function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function hasTimeOverlap(
+  newStartTime: string,
+  newEndTime: string,
+  existingStartTime: string,
+  existingEndTime: string
+) {
+  const newStart = timeToMinutes(newStartTime);
+  const newEnd = timeToMinutes(newEndTime);
+  const existingStart = timeToMinutes(existingStartTime);
+  const existingEnd = timeToMinutes(existingEndTime);
+
+  return newStart < existingEnd && newEnd > existingStart;
 }
 
 export const lessonsService = {
@@ -77,6 +97,41 @@ export const lessonsService = {
       },
       (error) => handleFirestoreError(error, FirestoreOperation.LIST, 'lessons')
     );
+  },
+
+  checkTimeConflict: async ({
+    coachId,
+    date,
+    startTime,
+    endTime,
+    excludeLessonId,
+  }: {
+    coachId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    excludeLessonId?: string;
+  }) => {
+    try {
+      const q = query(
+        collection(db, 'lessons'),
+        where('coachId', '==', coachId),
+        where('date', '==', date)
+      );
+
+      const snapshot = await getDocs(q);
+      const existingLessons = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Lesson[];
+
+      return existingLessons.some((lesson) => {
+        if (excludeLessonId && lesson.id === excludeLessonId) return false;
+        return hasTimeOverlap(startTime, endTime, lesson.startTime, lesson.endTime);
+      });
+    } catch (error) {
+      handleFirestoreError(error, FirestoreOperation.LIST, 'lessons');
+    }
   },
 
   createLesson: async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {

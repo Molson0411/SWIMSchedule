@@ -171,6 +171,30 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
         }
       }
 
+      for (const lesson of lessonsToSave) {
+        if (!lesson.coachId || !lesson.date || !lesson.startTime || !lesson.endTime) {
+          setError('課程資料尚未完整，請確認教練、日期與時間。');
+          return;
+        }
+
+        // 將即將送出的課程與 Firestore 中同教練、同日期的既有課程比對。
+        // 時間重疊公式：(新開始 < 既有結束) && (新結束 > 既有開始)。
+        const hasCoachConflict = await lessonsService.checkTimeConflict({
+          coachId: lesson.coachId,
+          date: lesson.date,
+          startTime: lesson.startTime,
+          endTime: lesson.endTime,
+          excludeLessonId: editLesson?.id,
+        });
+
+        if (hasCoachConflict) {
+          const message = '您在這個時段已經有排課了，請選擇其他時間！';
+          setError(message);
+          window.alert(message);
+          return;
+        }
+      }
+
       if (editLesson) {
         await lessonsService.updateLesson(editLesson.id, lessonsToSave[0]);
       } else {
