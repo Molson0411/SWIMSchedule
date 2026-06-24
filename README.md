@@ -190,3 +190,14 @@ VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
 - SMTP 未設定時，系統仍可運作，但課程通知信會略過寄送。
 - Firebase 設定與 Firestore 規則會影響登入、讀寫與角色管理權限。
 - 如果部署到 GitHub Pages，請確認 Firebase Auth 已允許 GitHub Pages 網域。
+
+## 修復紀錄
+
+### Firestore `addDoc()` undefined field
+
+新增課程時，Firestore 不接受任何值為 `undefined` 的欄位。課程建立流程已加入以下保護：
+
+- 新增模式不再把 `id` 放入 payload，文件 ID 由 `addDoc()` 自動產生。
+- `lessonsService.createLesson()` 會在寫入前移除 `id` 與所有 `undefined` 欄位。
+- 選填欄位如 `studentNames`、`adminNote` 會以空字串儲存。
+- 小池課程不需要泳道時，`lane` 會以 `null` 儲存。

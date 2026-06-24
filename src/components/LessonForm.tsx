@@ -25,6 +25,8 @@ const defaultLessonValues: Partial<Lesson> = {
   poolType: '25m',
   lessonType: '1:1',
   studentCount: 1,
+  studentNames: '',
+  adminNote: '',
   lane: 1,
 };
 
@@ -87,14 +89,20 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
 
     const baseLesson = {
       ...data,
+      studentNames: data.studentNames ?? '',
+      adminNote: data.adminNote ?? '',
       coachId: editLesson?.coachId || profile.uid,
       coachName: editLesson?.coachName || profile.displayName || profile.email,
       status: editLesson ? data.status || editLesson.status : 'Approved',
       checkedIn: editLesson ? Boolean(data.checkedIn) : false,
     };
 
-    if (editLesson || !isRecurring) {
-      return [{ ...baseLesson, id: editLesson?.id }];
+    if (editLesson) {
+      return [{ ...baseLesson, id: editLesson.id }];
+    }
+
+    if (!isRecurring) {
+      return [baseLesson];
     }
 
     const lessons: Partial<Lesson>[] = [];

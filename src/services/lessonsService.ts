@@ -32,6 +32,12 @@ function handleFirestoreError(error: any, operationType: FirestoreOperation, pat
   throw new Error(JSON.stringify(errInfo));
 }
 
+function removeUndefinedFields<T extends Record<string, any>>(data: T) {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+}
+
 export const lessonsService = {
   subscribeToLessons: (date: string, callback: (lessons: Lesson[]) => void) => {
     const q = query(
@@ -75,10 +81,18 @@ export const lessonsService = {
 
   createLesson: async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
+      const { id: _id, ...lessonWithoutId } = lesson as Partial<Lesson>;
+      const lessonToCreate = removeUndefinedFields({
+        ...lessonWithoutId,
+        studentNames: lessonWithoutId.studentNames ?? '',
+        adminNote: lessonWithoutId.adminNote ?? '',
+        lane: lessonWithoutId.poolType === '25m' ? lessonWithoutId.lane : null,
+      });
+
       await addDoc(collection(db, 'lessons'), {
         status: 'Pending',
         checkedIn: false,
-        ...lesson,
+        ...lessonToCreate,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -89,8 +103,9 @@ export const lessonsService = {
 
   updateLesson: async (id: string, data: Partial<Lesson>) => {
     try {
+      const { id: _id, createdAt: _createdAt, ...dataWithoutManagedFields } = data;
       await updateDoc(doc(db, 'lessons', id), {
-        ...data,
+        ...removeUndefinedFields(dataWithoutManagedFields),
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
