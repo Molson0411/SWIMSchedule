@@ -201,6 +201,39 @@ VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
 - `lessonsService.createLesson()` 會在寫入前移除 `id` 與所有 `undefined` 欄位。
 - 選填欄位如 `studentNames`、`adminNote` 會以空字串儲存。
 - 小池課程不需要泳道時，`lane` 會以 `null` 儲存。
+## Google 登入 In-App Browser 修復紀錄
+
+### `403 disallowed_useragent`
+
+Google OAuth 不支援 LINE、Messenger、Instagram 等通訊軟體內建瀏覽器。登入頁已加入前端防呆：
+
+- 使用 `isInAppBrowser()` 解析 `navigator.userAgent`。
+- 偵測到 LINE、Messenger、Instagram、WeChat、KakaoTalk、TikTok 等內建瀏覽器時，隱藏「使用 Google 登入」按鈕。
+- 顯示深紫色 `#2a0726` 提示卡，搭配白色與薄荷綠 `#d5f4d8` 文字。
+- 提醒使用者從螢幕角落選單選擇【以預設瀏覽器開啟】。
+- 提供 `googlechromes://` URL scheme 按鈕，嘗試喚醒 Chrome；若裝置或 app 不支援，使用者仍可手動以 Safari / Chrome 開啟。
+
+核心偵測邏輯：
+
+```ts
+export function isInAppBrowser(userAgent = navigator.userAgent) {
+  const normalizedUserAgent = userAgent.toLowerCase();
+  const inAppBrowserPatterns = [
+    'line/',
+    'fbav',
+    'fb_iab',
+    'fban',
+    'instagram',
+    'micromessenger',
+    'messenger',
+    'kakaotalk',
+    'tiktok',
+  ];
+
+  return inAppBrowserPatterns.some((pattern) => normalizedUserAgent.includes(pattern));
+}
+```
+
 ## 表單送出 UI 狀態修復紀錄
 
 ### 成功後清除錯誤、重置表單並關閉 Modal

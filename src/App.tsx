@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BottomNavigation } from './components/BottomNavigation';
 import { LessonForm } from './components/LessonForm';
@@ -10,11 +10,64 @@ import { WeeklyVenueSchedule } from './components/WeeklyVenueSchedule';
 import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
 import { Lesson } from './types';
-import { TIME_SLOTS } from './lib/scheduling';
 import { format } from 'date-fns';
-import { Plus, LogOut, ChevronLeft, ChevronRight, User, ShieldCheck, Edit2, Calendar } from 'lucide-react';
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Edit2,
+  ExternalLink,
+  LogOut,
+  Plus,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from './lib/utils';
+import { getExternalBrowserUrl, isInAppBrowser } from './lib/utils';
+
+function LoginScreen({ signIn }: { signIn: () => Promise<void> }) {
+  const isBlockedLoginBrowser = isInAppBrowser();
+  const externalBrowserUrl = getExternalBrowserUrl();
+
+  return (
+    <div className="h-screen flex flex-col items-center justify-center bg-bg-ivory p-8 text-center">
+      <div className="w-24 h-24 bg-primary rounded-3xl flex items-center justify-center mb-8 shadow-xl">
+        <ShieldCheck size={48} className="text-green-700" />
+      </div>
+      <h1 className="text-3xl font-bold text-gray-900 mb-2">游泳排程管理系統</h1>
+      <p className="text-gray-500 mb-10">請先登入以開始管理您的課程</p>
+
+      {isBlockedLoginBrowser ? (
+        <div className="w-full max-w-sm rounded-3xl bg-[#2a0726] p-5 text-left shadow-2xl">
+          <div className="mb-3 flex items-center gap-2 text-[#d5f4d8]">
+            <ExternalLink size={20} />
+            <h2 className="text-base font-black">請使用外部瀏覽器登入</h2>
+          </div>
+          <p className="text-sm leading-7 text-white">
+            為確保帳號安全，Google 不支援在通訊軟體內登入。請點擊螢幕角落選單，選擇【以預設瀏覽器開啟】(Safari / Chrome) 即可正常排課。
+          </p>
+          <a
+            href={externalBrowserUrl.chromeSecure}
+            className="mt-5 flex h-12 w-full items-center justify-center rounded-2xl bg-[#d5f4d8] text-sm font-black text-[#2a0726] active:scale-95 transition-transform"
+          >
+            嘗試用 Chrome 開啟
+          </a>
+          <p className="mt-3 text-xs leading-5 text-white/70">
+            若按鈕沒有反應，請使用 LINE 或通訊軟體右上角選單，手動選擇以 Safari / Chrome 開啟。
+          </p>
+        </div>
+      ) : (
+        <button
+          onClick={signIn}
+          className="w-full max-w-sm h-14 bg-green-600 text-white rounded-2xl font-bold shadow-lg shadow-green-100 flex items-center justify-center gap-3 active:scale-95 transition-transform"
+        >
+          <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" />
+          使用 Google 登入
+        </button>
+      )}
+    </div>
+  );
+}
 
 function MainApp() {
   const { user, profile, logout, signIn, updateDisplayName, loading: authLoading } = useAuth();
@@ -28,12 +81,13 @@ function MainApp() {
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
-    if (user) {
-      const unsubscribe = lessonsService.subscribeToLessons(selectedDate, (data) => {
-        setLessons(data);
-      });
-      return unsubscribe;
-    }
+    if (!user) return;
+
+    const unsubscribe = lessonsService.subscribeToLessons(selectedDate, (data) => {
+      setLessons(data);
+    });
+
+    return unsubscribe;
   }, [user, selectedDate]);
 
   if (authLoading) {
@@ -45,23 +99,10 @@ function MainApp() {
   }
 
   if (!user) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center bg-bg-ivory p-8 text-center">
-        <div className="w-24 h-24 bg-primary rounded-3xl flex items-center justify-center mb-8 shadow-xl">
-          <ShieldCheck size={48} className="text-green-700" />
-        </div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">游泳排程管理系統</h1>
-        <p className="text-gray-500 mb-12">請先登入以開始管理您的課程</p>
-        <button
-          onClick={signIn}
-          className="w-full max-w-sm h-14 bg-green-600 text-white rounded-2xl font-bold shadow-lg shadow-green-100 flex items-center justify-center gap-3 active:scale-95 transition-transform"
-        >
-          <img src="https://www.google.com/favicon.ico" className="w-5 h-5 bg-white rounded-full p-0.5" alt="Google" />
-          使用 Google 登入
-        </button>
-      </div>
-    );
+    return <LoginScreen signIn={signIn} />;
   }
+
+  const isAdmin = profile?.role === 'Admin';
 
   const changeDate = (days: number) => {
     const date = new Date(selectedDate);
@@ -69,42 +110,63 @@ function MainApp() {
     setSelectedDate(format(date, 'yyyy-MM-dd'));
   };
 
-  const isAdmin = profile?.role === 'Admin';
-
-  const handleAdminEdit = (lesson: Lesson) => {
+  const handleEditLesson = (lesson: Lesson) => {
     const isOwner = lesson.coachId === profile?.uid;
     if (!isAdmin && !isOwner) return;
+
     setEditingLesson(lesson);
     setIsFormOpen(true);
   };
 
-const handleUpdateName = async () => {
+  const handleOpenCreateLesson = () => {
+    setEditingLesson(undefined);
+    setIsFormOpen(true);
+  };
+
+  const handleCloseForm = () => {
+    setIsFormOpen(false);
+    setEditingLesson(undefined);
+  };
+
+  const handleUpdateName = async () => {
     if (!newName.trim()) {
       setIsEditingName(false);
       return;
     }
+
     try {
       await updateDisplayName(newName.trim());
       setIsEditingName(false);
     } catch (err) {
       console.error(err);
-      alert('更新名稱失敗');
+      alert('更新名稱失敗，請稍後再試。');
     }
   };
 
+  const pageTitle =
+    activeTab === 'schedule'
+      ? '課程排程'
+      : activeTab === 'dashboard'
+        ? '泳池監控'
+        : activeTab === 'reports'
+          ? '月報統計'
+          : activeTab === 'admin'
+            ? '使用者管理'
+            : '個人資料';
+
   return (
     <div className="min-h-screen bg-bg-ivory pb-32">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 p-4 pt-10 shadow-sm transition-all">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center font-black text-slate-700 shadow-sm">SP</div>
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center font-black text-slate-700 shadow-sm">
+              SP
+            </div>
             <div>
-              <h1 className="text-lg font-black tracking-tight text-slate-900 leading-tight">
-                {activeTab === 'schedule' ? '課程排程' : activeTab === 'dashboard' ? '場館總覽' : activeTab === 'reports' ? '數據報表' : activeTab === 'admin' ? '管理中心' : '個人帳戶'}
-              </h1>
+              <h1 className="text-lg font-black tracking-tight text-slate-900 leading-tight">{pageTitle}</h1>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                {profile?.displayName} • <span className="text-green-600">{profile?.role === 'Admin' ? '管理員' : '教練'}</span>
+                {profile?.displayName || profile?.email || '使用者'} /{' '}
+                <span className="text-green-600">{isAdmin ? '管理員' : '教練'}</span>
               </p>
             </div>
           </div>
@@ -121,7 +183,7 @@ const handleUpdateName = async () => {
             <div className="flex flex-col items-center">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">選擇日期</span>
               <span className="font-mono font-bold text-slate-800 text-sm">
-                {selectedDate === format(new Date(), 'yyyy-MM-dd') ? '今天 / ' + selectedDate : selectedDate}
+                {selectedDate === format(new Date(), 'yyyy-MM-dd') ? `今天 / ${selectedDate}` : selectedDate}
               </span>
             </div>
             <button onClick={() => changeDate(1)} className="p-2 rounded-lg bg-white shadow-sm border border-slate-200 active:scale-90 transition-transform">
@@ -131,7 +193,6 @@ const handleUpdateName = async () => {
         )}
       </header>
 
-      {/* Main Content */}
       <main className="max-w-md mx-auto">
         <AnimatePresence mode="wait">
           {activeTab === 'schedule' && (
@@ -143,20 +204,20 @@ const handleUpdateName = async () => {
               className="p-6 space-y-4"
             >
               <div className="flex justify-between items-end mb-2">
-                <h2 className="text-xl font-bold text-gray-900">所有排程</h2>
+                <h2 className="text-xl font-bold text-gray-900">當日課程</h2>
                 <span className="text-xs font-medium text-gray-400">{lessons.length} 堂課</span>
               </div>
               {lessons.length === 0 ? (
                 <div className="bg-white rounded-3xl p-12 text-center border-2 border-dashed border-gray-200">
-                  <p className="text-gray-400">當天尚無排課</p>
+                  <p className="text-gray-400">今天尚未建立課程</p>
                 </div>
               ) : (
-                lessons.map((lesson: Lesson) => (
-                  <LessonCard 
-                    key={lesson.id} 
-                    lesson={lesson} 
+                lessons.map((lesson) => (
+                  <LessonCard
+                    key={lesson.id}
+                    lesson={lesson}
                     isAdmin={isAdmin}
-                    onEdit={() => handleAdminEdit(lesson)}
+                    onEdit={() => handleEditLesson(lesson)}
                   />
                 ))
               )}
@@ -172,39 +233,37 @@ const handleUpdateName = async () => {
               className="p-6 space-y-6"
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900">場館全日動態</h2>
+                <h2 className="text-xl font-bold text-slate-900">泳池使用概況</h2>
                 <button
                   onClick={() => setIsWeeklyScheduleOpen(true)}
                   className="h-10 px-4 bg-primary text-slate-900 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 active:scale-95 transition-all"
                 >
                   <Calendar size={14} />
-                  查看週課表
+                  週場地表
                 </button>
               </div>
-              
-              <PoolMonitor 
-                lessons={lessons} 
-              />
 
-              <WeeklyVenueSchedule 
+              <PoolMonitor lessons={lessons} />
+
+              <WeeklyVenueSchedule
                 isOpen={isWeeklyScheduleOpen}
                 onClose={() => setIsWeeklyScheduleOpen(false)}
                 baseDate={selectedDate}
               />
-              
+
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
                 <h3 className="font-bold mb-4 text-gray-800">我的今日統計</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
-                    <p className="text-xs text-blue-600 font-bold mb-1">今日課程</p>
+                    <p className="text-xs text-blue-600 font-bold mb-1">排課數</p>
                     <p className="text-2xl font-black text-blue-700">
-                      {lessons.filter(l => l.coachId === profile?.uid).length}
+                      {lessons.filter((lesson) => lesson.coachId === profile?.uid).length}
                     </p>
                   </div>
                   <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
                     <p className="text-xs text-green-600 font-bold mb-1">已簽到</p>
                     <p className="text-2xl font-black text-green-700">
-                      {lessons.filter(l => l.coachId === profile?.uid && l.checkedIn).length}
+                      {lessons.filter((lesson) => lesson.coachId === profile?.uid && lesson.checkedIn).length}
                     </p>
                   </div>
                 </div>
@@ -247,25 +306,25 @@ const handleUpdateName = async () => {
                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4 shadow-inner">
                   <User size={40} />
                 </div>
-                
+
                 {isEditingName ? (
                   <div className="flex flex-col items-center w-full space-y-2">
                     <input
                       type="text"
                       value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      placeholder="輸入新名稱"
+                      onChange={(event) => setNewName(event.target.value)}
+                      placeholder="輸入顯示名稱"
                       className="w-full max-w-[200px] h-10 px-4 rounded-xl border border-slate-200 text-center font-bold outline-none focus:border-primary transition-all"
                       autoFocus
                     />
                     <div className="flex gap-2">
-                      <button 
+                      <button
                         onClick={handleUpdateName}
                         className="px-4 py-1.5 bg-primary text-slate-800 rounded-lg text-xs font-black uppercase tracking-widest active:scale-95 transition-all"
                       >
                         儲存
                       </button>
-                      <button 
+                      <button
                         onClick={() => setIsEditingName(false)}
                         className="px-4 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-black uppercase tracking-widest active:scale-95 transition-all"
                       >
@@ -276,8 +335,8 @@ const handleUpdateName = async () => {
                 ) : (
                   <div className="flex flex-col items-center">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-xl font-bold">{profile?.displayName}</h3>
-                      <button 
+                      <h3 className="text-xl font-bold">{profile?.displayName || '未命名使用者'}</h3>
+                      <button
                         onClick={() => {
                           setNewName(profile?.displayName || '');
                           setIsEditingName(true);
@@ -290,60 +349,49 @@ const handleUpdateName = async () => {
                     <p className="text-gray-500">{profile?.email}</p>
                   </div>
                 )}
-                
+
                 <div className="mt-4 px-4 py-1 bg-green-600 text-white text-[10px] font-bold rounded-full uppercase tracking-widest shadow-lg shadow-green-100">
-                  {profile?.role === 'Admin' ? '管理員' : '教練'}
+                  {isAdmin ? '管理員' : '教練'}
                 </div>
               </div>
 
               <div className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
                 <button className="w-full p-5 text-left font-medium border-b hover:bg-gray-50 flex justify-between items-center group transition-colors">
-                  <span>排班規則說明</span>
+                  <span>課程通知設定</span>
                   <ChevronRight size={18} className="text-gray-300 group-hover:translate-x-1 transition-transform" />
                 </button>
                 <button className="w-full p-5 text-left font-medium border-b hover:bg-gray-50 flex justify-between items-center group transition-colors">
-                  <span>聯絡管理員</span>
+                  <span>帳號與權限</span>
                   <ChevronRight size={18} className="text-gray-300 group-hover:translate-x-1 transition-transform" />
                 </button>
-                <button onClick={logout} className="w-full p-5 text-left font-bold text-red-500 hover:bg-red-50 transition-colors">登出帳號</button>
+                <button onClick={logout} className="w-full p-5 text-left font-bold text-red-500 hover:bg-red-50 transition-colors">
+                  登出
+                </button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {/* FAB */}
       {activeTab === 'schedule' && (
         <button
-          onClick={() => {
-            setEditingLesson(undefined);
-            setIsFormOpen(true);
-          }}
+          onClick={handleOpenCreateLesson}
           className="fixed right-6 bottom-24 w-16 h-16 bg-green-600 text-white rounded-full shadow-2xl flex items-center justify-center z-50 active:scale-90 transition-transform shadow-green-200"
         >
           <Plus size={32} />
         </button>
       )}
 
-      {/* Bottom Nav */}
-      <BottomNavigation 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        isAdmin={isAdmin} 
-      />
+      <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} isAdmin={isAdmin} />
 
-      {/* Form Bottom Sheet */}
-      <LessonForm 
-        isOpen={isFormOpen} 
-        onClose={() => setIsFormOpen(false)} 
+      <LessonForm
+        isOpen={isFormOpen}
+        onClose={handleCloseForm}
         existingLessons={lessons}
         editLesson={editingLesson}
       />
 
-      <OnboardingModal
-        userId={user.uid}
-        isAuthenticated={Boolean(user)}
-      />
+      <OnboardingModal userId={user.uid} isAuthenticated={Boolean(user)} />
     </div>
   );
 }
