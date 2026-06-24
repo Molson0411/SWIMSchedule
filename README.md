@@ -201,6 +201,61 @@ VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
 - `lessonsService.createLesson()` 會在寫入前移除 `id` 與所有 `undefined` 欄位。
 - 選填欄位如 `studentNames`、`adminNote` 會以空字串儲存。
 - 小池課程不需要泳道時，`lane` 會以 `null` 儲存。
+## Firestore 編輯權限修復紀錄
+
+### 課程編輯 `Missing or insufficient permissions`
+
+課程編輯送出時會呼叫 `updateDoc()`，因此 Firestore Security Rules 必須明確允許 `update`。目前 `firestore.rules` 已調整為：`users` 與 `lessons` 集合只要是已登入使用者，即可進行 `read`, `create`, `update`, `delete`。
+
+完整規則：
+
+```js
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if isSignedIn();
+    }
+
+    match /lessons/{lessonId} {
+      allow read, create, update, delete: if isSignedIn();
+    }
+
+    match /coachAvailability/{coachId} {
+      allow read, create, update, delete: if isSignedIn();
+    }
+
+    match /mail/{mailId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasOnly(['to', 'message', 'createdAt', 'type']) &&
+        request.resource.data.to == request.auth.token.email &&
+        request.resource.data.type == 'lesson-confirmation' &&
+        request.resource.data.message.subject is string &&
+        request.resource.data.message.text is string &&
+        request.resource.data.message.html is string;
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+Firebase 後台發布位置：
+
+1. 開啟 Firebase Console。
+2. 選擇 SWIMSchedule 使用的 Firebase 專案。
+3. 進入 `Firestore Database`。
+4. 切換到 `Rules` 頁籤。
+5. 用本專案的 `firestore.rules` 覆蓋原有規則。
+6. 按下 `Publish` 發布。
+
 ## Google 登入 In-App Browser 修復紀錄
 
 ### `403 disallowed_useragent`

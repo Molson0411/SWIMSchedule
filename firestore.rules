@@ -1,52 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    function isAdmin() {
-      return isSignedIn() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
-    }
 
-    function isOwner(uid) {
-      return isSignedIn() && request.auth.uid == uid;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // --- Users Collection ---
+    // Users: authenticated users can manage user documents.
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isOwner(userId) && 
-        request.resource.data.role == 'Coach'; // Default role
-      allow update: if isSignedIn() && (isAdmin() || (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])));
+      allow read, create, update, delete: if isSignedIn();
     }
 
-    // --- Lessons Collection ---
+    // Lessons: authenticated users can create, read, edit, and delete lessons.
     match /lessons/{lessonId} {
       allow read, create, update, delete: if isSignedIn();
     }
 
-    // --- Coach Availability ---
+    // Coach Availability: authenticated users can manage availability documents.
     match /coachAvailability/{coachId} {
-      allow read: if isSignedIn();
-      allow create, update: if (isAdmin() || isOwner(coachId)) && 
-        request.resource.data.coachId == coachId;
-      allow delete: if isAdmin() || isOwner(coachId);
+      allow read, create, update, delete: if isSignedIn();
     }
 
-    // --- Email Queue ---
-    // Intended for the Firebase Trigger Email extension.
+    // Email Queue: only signed-in users can create email jobs addressed to themselves.
     match /mail/{mailId} {
       allow create: if isSignedIn() &&
         request.resource.data.keys().hasOnly(['to', 'message', 'createdAt', 'type']) &&
@@ -56,6 +30,11 @@ service cloud.firestore {
         request.resource.data.message.text is string &&
         request.resource.data.message.html is string;
       allow read, update, delete: if false;
+    }
+
+    // Everything else stays closed by default.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
