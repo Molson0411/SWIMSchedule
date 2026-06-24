@@ -31,7 +31,7 @@ const defaultLessonValues: Partial<Lesson> = {
 };
 
 export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: LessonFormProps) {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
@@ -127,7 +127,16 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const onSubmit = async (data: Partial<Lesson>) => {
     try {
       setError(null);
-      if (!profile) return;
+
+      if (!user) {
+        setError('請先登入後再新增或更新課程。');
+        return;
+      }
+
+      if (!profile) {
+        setError('已取得登入狀態，正在載入使用者資料，請稍後再試。');
+        return;
+      }
 
       if (!data.date) {
         setError('請選擇課程日期。');

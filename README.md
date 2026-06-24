@@ -201,3 +201,46 @@ VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
 - `lessonsService.createLesson()` 會在寫入前移除 `id` 與所有 `undefined` 欄位。
 - 選填欄位如 `studentNames`、`adminNote` 會以空字串儲存。
 - 小池課程不需要泳道時，`lane` 會以 `null` 儲存。
+## Firestore 權限修復紀錄
+
+### `Missing or insufficient permissions`
+
+課程寫入需要 Firestore Security Rules 允許已登入使用者操作 `lessons` 集合。目前 `firestore.rules` 的課程規則採用基本安全版：
+
+```js
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /lessons/{lessonId} {
+      allow read, create, update, delete: if isSignedIn();
+    }
+  }
+}
+```
+
+Firebase Console 更新位置：
+
+1. 開啟 Firebase Console。
+2. 選擇此專案。
+3. 進入 `Firestore Database`。
+4. 切換到 `Rules` 頁籤。
+5. 貼上或同步此專案的 `firestore.rules`。
+6. 按下 Publish 發布規則。
+
+前端送出表單前會確認登入狀態：
+
+```ts
+if (!user) {
+  setError('請先登入後再新增或更新課程。');
+  return;
+}
+
+if (!profile) {
+  setError('已取得登入狀態，正在載入使用者資料，請稍後再試。');
+  return;
+}
+```
