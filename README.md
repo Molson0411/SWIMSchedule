@@ -201,6 +201,35 @@ VITE_NOTIFY_LESSON_URL=https://your-api.example.com/api/notify-lesson
 - `lessonsService.createLesson()` 會在寫入前移除 `id` 與所有 `undefined` 欄位。
 - 選填欄位如 `studentNames`、`adminNote` 會以空字串儲存。
 - 小池課程不需要泳道時，`lane` 會以 `null` 儲存。
+## 表單送出 UI 狀態修復紀錄
+
+### 成功後清除錯誤、重置表單並關閉 Modal
+
+課程表單送出流程已調整為清楚的成功/失敗狀態：
+
+- 送出一開始先執行 `setError(null)`，清除舊的紅框錯誤。
+- Firestore 寫入成功後執行 `resetFormState()`，重置表單資料與重複課程狀態。
+- 寫入成功後呼叫 `onClose()` 關閉 Modal。
+- 寫入成功後使用 `window.alert()` 顯示「課程新增成功」或「課程更新成功」。
+- 寄信通知流程獨立捕捉錯誤，通知失敗不會阻擋課程新增成功後的 UI 收尾。
+- 只有真正發生儲存錯誤時，才會在 catch 區塊寫入 `setError(...)` 顯示紅框。
+
+核心送出流程：
+
+```ts
+try {
+  setError(null);
+
+  await lessonsService.createLesson(dataToSave);
+
+  resetFormState();
+  onClose();
+  window.alert('課程新增成功');
+} catch (err) {
+  setError(err instanceof Error ? err.message : '儲存失敗，請稍後再試。');
+}
+```
+
 ## Firestore 權限修復紀錄
 
 ### `Missing or insufficient permissions`

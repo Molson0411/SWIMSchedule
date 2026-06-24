@@ -18,7 +18,7 @@ interface LessonFormProps {
   editLesson?: Lesson;
 }
 
-const defaultLessonValues: Partial<Lesson> = {
+const createDefaultLessonValues = (): Partial<Lesson> => ({
   date: format(new Date(), 'yyyy-MM-dd'),
   startTime: '09:00',
   endTime: '10:00',
@@ -28,7 +28,7 @@ const defaultLessonValues: Partial<Lesson> = {
   studentNames: '',
   adminNote: '',
   lane: 1,
-};
+});
 
 export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: LessonFormProps) {
   const { user, profile } = useAuth();
@@ -37,7 +37,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const [repeatUntil, setRepeatUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
 
   const { register, handleSubmit, watch, setValue, reset } = useForm<Partial<Lesson>>({
-    defaultValues: defaultLessonValues,
+    defaultValues: createDefaultLessonValues(),
   });
 
   const poolType = watch('poolType');
@@ -45,23 +45,28 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const startTime = watch('startTime');
   const selectedDate = watch('date') || format(new Date(), 'yyyy-MM-dd');
 
+  const resetFormState = () => {
+    reset(createDefaultLessonValues());
+    setIsRecurring(false);
+    setRepeatUntil(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
+  };
+
   useEffect(() => {
     if (editLesson) {
       reset(editLesson);
     } else {
-      reset(defaultLessonValues);
+      resetFormState();
     }
     setError(null);
-    setIsRecurring(false);
   }, [editLesson, isOpen, reset]);
 
   useEffect(() => {
     if (!startTime || editLesson) return;
 
     const [hours, minutes] = startTime.split(':').map(Number);
-    const endTime = `${String(hours + 1).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    if (TIME_SLOTS.includes(endTime)) {
-      setValue('endTime', endTime);
+    const nextEndTime = `${String(hours + 1).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    if (TIME_SLOTS.includes(nextEndTime)) {
+      setValue('endTime', nextEndTime);
     }
   }, [editLesson, setValue, startTime]);
 
@@ -76,11 +81,14 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
     if (!window.confirm('確定要刪除這堂課嗎？此動作無法復原。')) return;
 
     try {
+      setError(null);
       await lessonsService.deleteLesson(editLesson.id);
+      resetFormState();
       onClose();
+      window.alert('課程已刪除');
     } catch (err) {
       console.error('Delete failed:', err);
-      alert('刪除失敗，請確認權限後再試一次。');
+      setError(err instanceof Error ? err.message : '刪除失敗，請稍後再試。');
     }
   };
 
@@ -164,26 +172,36 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
       }
 
       if (editLesson) {
-        const lessonData = lessonsToSave[0];
-        await lessonsService.updateLesson(editLesson.id, lessonData);
+        await lessonsService.updateLesson(editLesson.id, lessonsToSave[0]);
       } else {
-        await Promise.all(lessonsToSave.map((lesson) => lessonsService.createLesson(lesson as Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>)));
+        await Promise.all(
+          lessonsToSave.map((lesson) =>
+            lessonsService.createLesson(lesson as Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>),
+          ),
+        );
 
         const summaryLesson = lessonsToSave[0];
-        await notificationService.notifyLessonCreated({
-          email: profile.email,
-          lessonDetails: {
-            date: lessonsToSave.length > 1 ? `${summaryLesson.date} 起，共 ${lessonsToSave.length} 堂` : summaryLesson.date || '',
-            startTime: summaryLesson.startTime || '',
-            endTime: summaryLesson.endTime || '',
-            poolType: summaryLesson.poolType || '',
-            lessonType: summaryLesson.lessonType || '',
-            coachName: summaryLesson.coachName || '',
-          },
-        });
+        try {
+          await notificationService.notifyLessonCreated({
+            email: profile.email,
+            lessonDetails: {
+              date: lessonsToSave.length > 1 ? `${summaryLesson.date} 起，共 ${lessonsToSave.length} 堂` : summaryLesson.date || '',
+              startTime: summaryLesson.startTime || '',
+              endTime: summaryLesson.endTime || '',
+              poolType: summaryLesson.poolType || '',
+              lessonType: summaryLesson.lessonType || '',
+              coachName: summaryLesson.coachName || '',
+            },
+          });
+        } catch (notificationError) {
+          console.warn('Lesson saved, but notification failed:', notificationError);
+        }
       }
 
+      setError(null);
+      resetFormState();
       onClose();
+      window.alert(editLesson ? '課程更新成功' : '課程新增成功');
     } catch (err) {
       console.error('Save error:', err);
       setError(err instanceof Error ? err.message : '儲存失敗，請稍後再試。');
