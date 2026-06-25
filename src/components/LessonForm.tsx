@@ -80,6 +80,11 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
     if (!editLesson) return;
     if (!window.confirm('確定要刪除這堂課嗎？此動作無法復原。')) return;
 
+    if (editLesson.coachId !== user?.uid) {
+      window.alert('權限不足：您只能更改自己的排課資料！');
+      return;
+    }
+
     try {
       setError(null);
       await lessonsService.deleteLesson(editLesson.id);
@@ -99,7 +104,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
       ...data,
       studentNames: data.studentNames ?? '',
       adminNote: data.adminNote ?? '',
-      coachId: editLesson?.coachId || profile.uid,
+      coachId: editLesson?.coachId || user?.uid || profile.uid,
       coachName: editLesson?.coachName || profile.displayName || profile.email,
       status: editLesson ? data.status || editLesson.status : 'Approved',
       checkedIn: editLesson ? Boolean(data.checkedIn) : false,
@@ -135,6 +140,11 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const onSubmit = async (data: Partial<Lesson>) => {
     try {
       setError(null);
+
+      if (editLesson && editLesson.coachId !== user?.uid) {
+        window.alert('權限不足：您只能更改自己的排課資料！');
+        return;
+      }
 
       if (!user) {
         setError('請先登入後再新增或更新課程。');

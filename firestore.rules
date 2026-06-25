@@ -5,14 +5,30 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isLessonOwner() {
+      return isSignedIn() && resource.data.coachId == request.auth.uid;
+    }
+
+    function isCreatingOwnLesson() {
+      return isSignedIn() && request.resource.data.coachId == request.auth.uid;
+    }
+
+    function keepsLessonOwner() {
+      return request.resource.data.coachId == resource.data.coachId;
+    }
+
     // Users: authenticated users can manage user documents.
     match /users/{userId} {
       allow read, create, update, delete: if isSignedIn();
     }
 
-    // Lessons: authenticated users can create, read, edit, and delete lessons.
+    // Lessons: signed-in users can read the shared schedule.
+    // Writes are limited to the lesson owner recorded in coachId.
     match /lessons/{lessonId} {
-      allow read, create, update, delete: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create: if isCreatingOwnLesson();
+      allow update: if isLessonOwner() && keepsLessonOwner();
+      allow delete: if isLessonOwner();
     }
 
     // Coach Availability: authenticated users can manage availability documents.

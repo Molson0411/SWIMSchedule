@@ -126,6 +126,11 @@ function MainApp() {
   };
 
   const handleEditLesson = (lesson: Lesson) => {
+    if (lesson.coachId !== user.uid) {
+      window.alert('權限不足：您只能更改自己的排課資料！');
+      return;
+    }
+
     setEditingLesson(lesson);
     setIsFormOpen(true);
   };
@@ -228,6 +233,7 @@ function MainApp() {
                   <LessonCard
                     key={lesson.id}
                     lesson={lesson}
+                    currentUserId={user.uid}
                     onEdit={() => handleEditLesson(lesson)}
                   />
                 ))

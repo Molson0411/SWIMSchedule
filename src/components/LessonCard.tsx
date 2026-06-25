@@ -7,14 +7,16 @@ import { lessonsService } from '../services/lessonsService';
 
 interface LessonCardProps {
   lesson: Lesson;
+  currentUserId?: string;
   onEdit?: () => void;
 }
 
-export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
+export const LessonCard: React.FC<LessonCardProps> = ({ lesson, currentUserId, onEdit }) => {
   const [canCheckIn, setCanCheckIn] = useState(false);
   const [isBeforeCheckIn, setIsBeforeCheckIn] = useState(false);
   const [isMissed, setIsMissed] = useState(false);
   const [now, setNow] = useState(new Date());
+  const isOwner = Boolean(currentUserId && lesson.coachId === currentUserId);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
@@ -39,6 +41,11 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
   }, [now, lesson]);
 
   const handleCheckIn = async () => {
+    if (!isOwner) {
+      window.alert('權限不足：您只能更改自己的排課資料！');
+      return;
+    }
+
     if (!canCheckIn) return;
 
     try {
@@ -80,7 +87,7 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
           >
             {lesson.status === 'Approved' ? '已核准' : '待審核'}
           </span>
-          {onEdit && (
+          {isOwner && onEdit && (
             <button
               onClick={(event) => {
                 event.stopPropagation();
@@ -150,25 +157,27 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
           )}
         </div>
 
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            handleCheckIn();
-          }}
-          disabled={!canCheckIn}
-          className={cn(
-            'h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all',
-            lesson.checkedIn
-              ? 'bg-slate-200 text-slate-400'
-              : isMissed
-                ? 'bg-red-50 text-red-600 border border-red-100 cursor-not-allowed'
-                : canCheckIn
-                  ? 'bg-[#d5f4d8] text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95'
-                  : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed',
-          )}
-        >
-          {lesson.checkedIn ? '已簽到' : isMissed ? '缺簽' : canCheckIn ? '點擊簽到' : '尚未開放'}
-        </button>
+        {isOwner && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              handleCheckIn();
+            }}
+            disabled={!canCheckIn}
+            className={cn(
+              'h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all',
+              lesson.checkedIn
+                ? 'bg-slate-200 text-slate-400'
+                : isMissed
+                  ? 'bg-red-50 text-red-600 border border-red-100 cursor-not-allowed'
+                  : canCheckIn
+                    ? 'bg-[#d5f4d8] text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95'
+                    : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed',
+            )}
+          >
+            {lesson.checkedIn ? '已簽到' : isMissed ? '缺簽' : canCheckIn ? '點擊簽到' : '尚未開放'}
+          </button>
+        )}
       </div>
     </div>
   );
