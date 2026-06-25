@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { CheckCircle, Clock, MapPin, Users, AlertCircle, Edit2, Trash2 } from 'lucide-react';
-import { format, isBefore, addMinutes, subMinutes, parse } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle, Clock, Edit2, MapPin, Users } from 'lucide-react';
+import { format, parse, subMinutes } from 'date-fns';
 import { Lesson } from '../types';
 import { cn } from '../lib/utils';
 import { lessonsService } from '../services/lessonsService';
@@ -12,25 +12,35 @@ interface LessonCardProps {
 
 export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
   const [canCheckIn, setCanCheckIn] = useState(false);
+  const [isBeforeCheckIn, setIsBeforeCheckIn] = useState(false);
   const [isMissed, setIsMissed] = useState(false);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000); // Update every 30s
+    const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
     const lessonStart = parse(`${lesson.date} ${lesson.startTime}`, 'yyyy-MM-dd HH:mm', new Date());
     const checkInStart = subMinutes(lessonStart, 15);
-    const checkInEnd = addMinutes(lessonStart, 30);
+    const checkInEnd = parse(`${lesson.date} 23:59:59`, 'yyyy-MM-dd HH:mm:ss', new Date());
+    const nowTime = now.getTime();
+    const startTime = checkInStart.getTime();
+    const endTime = checkInEnd.getTime();
 
-    setCanCheckIn(isBefore(checkInStart, now) && isBefore(now, checkInEnd) && !lesson.checkedIn);
-    setIsMissed(isBefore(checkInEnd, now) && !lesson.checkedIn);
+    // 簽到視窗：上課前 15 分鐘開始，課程當日 23:59:59 結束。
+    const isWithinCheckInWindow = nowTime >= startTime && nowTime <= endTime;
+    const hasNotCheckedIn = !lesson.checkedIn;
+
+    setCanCheckIn(isWithinCheckInWindow && hasNotCheckedIn);
+    setIsBeforeCheckIn(nowTime < startTime && hasNotCheckedIn);
+    setIsMissed(nowTime > endTime && hasNotCheckedIn);
   }, [now, lesson]);
 
   const handleCheckIn = async () => {
-    if (lesson.checkedIn) return;
+    if (!canCheckIn) return;
+
     try {
       await lessonsService.updateLesson(lesson.id, {
         checkedIn: true,
@@ -41,17 +51,11 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
     }
   };
 
-  const statusColors = {
-    'Pending': 'bg-yellow-100 text-yellow-700',
-    'Approved': 'bg-green-100 text-green-700',
-  };
-
   return (
-    <div 
+    <div
       className={cn(
-        "bg-white rounded-xl p-3 border border-slate-200 transition-all relative overflow-hidden",
-        lesson.checkedIn ? "bg-slate-50/50" : isMissed ? "border-red-200 bg-red-50/30" : "hover:border-slate-400",
-        "shadow-sm"
+        'bg-white rounded-xl p-3 border border-slate-200 transition-all relative overflow-hidden shadow-sm',
+        lesson.checkedIn ? 'bg-slate-50/50' : isMissed ? 'border-red-200 bg-red-50/30' : 'hover:border-slate-400',
       )}
     >
       <div className="flex justify-between items-start mb-2">
@@ -66,16 +70,20 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
               <AlertCircle size={14} />
             </div>
           )}
-          <span className={cn(
-            "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border",
-            lesson.status === 'Approved' ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-yellow-50 text-yellow-600 border-yellow-200"
-          )}>
+          <span
+            className={cn(
+              'px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border',
+              lesson.status === 'Approved'
+                ? 'bg-blue-50 text-blue-600 border-blue-200'
+                : 'bg-yellow-50 text-yellow-600 border-yellow-200',
+            )}
+          >
             {lesson.status === 'Approved' ? '已核准' : '待審核'}
           </span>
           {onEdit && (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
                 onEdit();
               }}
               className="p-2 rounded-lg bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors shadow-sm"
@@ -89,16 +97,14 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
 
       <div className="space-y-2">
         <div className="flex items-baseline gap-2">
-          <h3 className="font-black text-slate-900 text-sm">
-            {lesson.coachName}
-          </h3>
+          <h3 className="font-black text-slate-900 text-sm">{lesson.coachName}</h3>
           <span className="text-[10px] text-slate-400 font-medium">教練</span>
         </div>
-        
+
         <div className="grid grid-cols-2 gap-2">
           <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
             <MapPin size={12} className="text-blue-500" />
-            <span className="truncate">{lesson.poolType === '25m' ? `水道 ${lesson.lane}` : '教學小池'}</span>
+            <span className="truncate">{lesson.poolType === '25m' ? `25m 第 ${lesson.lane} 道` : '小泳池'}</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
             <Users size={12} className="text-purple-500" />
@@ -114,7 +120,7 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
 
         {lesson.adminNote && (
           <div className="mt-1 text-[9px] bg-orange-50 text-orange-700 p-1.5 rounded-lg border border-orange-100 font-bold leading-tight">
-            管理員備註: {lesson.adminNote}
+            管理備註：{lesson.adminNote}
           </div>
         )}
       </div>
@@ -129,34 +135,41 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, onEdit }) => {
           ) : isMissed ? (
             <div className="flex items-center gap-1 text-red-600 font-black text-[10px] uppercase tracking-tighter bg-red-50 px-2 py-1 rounded-md">
               <AlertCircle size={14} strokeWidth={3} />
-              <span>缺簽</span>
+              <span>缺簽，請洽管理員</span>
             </div>
-          ) : (
+          ) : isBeforeCheckIn ? (
             <div className="flex items-center gap-1 text-slate-400 font-bold text-[10px] uppercase tracking-tighter">
               <Clock size={14} />
-              <span>等待上課</span>
+              <span>尚未到簽到時間</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-green-600 font-black text-[10px] uppercase tracking-tighter bg-green-50 px-2 py-1 rounded-md">
+              <Clock size={14} />
+              <span>可簽到</span>
             </div>
           )}
         </div>
 
         <button
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={(event) => {
+            event.stopPropagation();
             handleCheckIn();
           }}
-          disabled={lesson.checkedIn}
+          disabled={!canCheckIn}
           className={cn(
-            "h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all",
-            lesson.checkedIn 
-              ? "bg-slate-200 text-slate-400" 
-              : canCheckIn 
-                ? "bg-primary text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95" 
-                : "bg-primary text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95"
+            'h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all',
+            lesson.checkedIn
+              ? 'bg-slate-200 text-slate-400'
+              : isMissed
+                ? 'bg-red-50 text-red-600 border border-red-100 cursor-not-allowed'
+                : canCheckIn
+                  ? 'bg-[#d5f4d8] text-slate-800 shadow-md shadow-primary/20 hover:scale-105 active:scale-95'
+                  : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed',
           )}
         >
-          簽到
+          {lesson.checkedIn ? '已簽到' : isMissed ? '缺簽' : canCheckIn ? '點擊簽到' : '尚未開放'}
         </button>
       </div>
     </div>
   );
-}
+};
