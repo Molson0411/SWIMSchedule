@@ -3,18 +3,69 @@ import { motion, AnimatePresence } from 'motion/react';
 import { POOL_LIMITS, TIME_SLOTS, isLessonInSlot } from '../lib/scheduling';
 import { Lesson } from '../types';
 import { cn } from '../lib/utils';
-import { Waves, Users, Info, X, Clock } from 'lucide-react';
+import { Waves, Users, Info, X, Clock, Download } from 'lucide-react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
+import { db } from '../lib/firebase';
 
 interface PoolMonitorProps {
   lessons: Lesson[];
+  baseDate: string;
 }
 
-export function PoolMonitor({ lessons }: PoolMonitorProps) {
+type ExportRangeMode = 'day' | 'week';
+type ExportFieldKey = 'date' | 'time' | 'coachName' | 'studentNames' | 'poolLocation' | 'lessonType' | 'studentCount' | 'attendance';
+
+const EXPORT_FIELDS: { key: ExportFieldKey; label: string }[] = [
+  { key: 'date', label: '日期' },
+  { key: 'time', label: '時段' },
+  { key: 'coachName', label: '教練姓名' },
+  { key: 'studentNames', label: '學生姓名或備註' },
+  { key: 'poolLocation', label: '泳池與位置' },
+  { key: 'lessonType', label: '課程型態' },
+  { key: 'studentCount', label: '實際上課人數' },
+  { key: 'attendance', label: '簽到出勤狀態' },
+];
+
+function getExportRange(baseDate: string, mode: ExportRangeMode) {
+  const parsedDate = parseISO(baseDate);
+
+  if (mode === 'week') {
+    return {
+      startDate: format(startOfWeek(parsedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      endDate: format(endOfWeek(parsedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+    };
+  }
+
+  return { startDate: baseDate, endDate: baseDate };
+}
+
+function flattenLessonForExport(lesson: Lesson): Record<ExportFieldKey, string> {
+  return {
+    date: lesson.date,
+    time: `${lesson.startTime} - ${lesson.endTime}`,
+    coachName: lesson.coachName || '',
+    studentNames: lesson.studentNames || lesson.adminNote || '',
+    poolLocation: lesson.poolType === '25m' ? `25m 大池 第 ${lesson.lane || '-'} 水道` : '小泳池',
+    lessonType: lesson.lessonType === 'Group' ? 'GROUP' : lesson.lessonType,
+    studentCount: String(lesson.studentCount ?? 0),
+    attendance: lesson.checkedIn ? '已簽到' : '未簽到',
+  };
+}
+
+function escapeCSVValue(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+export function PoolMonitor({ lessons, baseDate }: PoolMonitorProps) {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [selectedDetails, setSelectedDetails] = useState<{
     title: string;
     lessons: Lesson[];
   } | null>(null);
+  const [exportRangeMode, setExportRangeMode] = useState<ExportRangeMode>('day');
+  const [selectedExportFields, setSelectedExportFields] = useState<ExportFieldKey[]>(EXPORT_FIELDS.map((field) => field.key));
+  const [isExporting, setIsExporting] = useState(false);
 
   const getSlotData = (slot: string) => {
     const activeLessons = lessons.filter(l => isLessonInSlot(l, slot));
@@ -34,8 +85,112 @@ export function PoolMonitor({ lessons }: PoolMonitorProps) {
     return { activeLessons, laneCounts, smallPoolLessons, smallPoolCount };
   };
 
+  const toggleExportField = (fieldKey: ExportFieldKey) => {
+    setSelectedExportFields((fields) =>
+      fields.includes(fieldKey)
+        ? fields.filter((field) => field !== fieldKey)
+        : [...fields, fieldKey],
+    );
+  };
+
+  const exportToCSV = async () => {
+    if (selectedExportFields.length === 0) {
+      window.alert('請至少選擇一個匯出欄位。');
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const { startDate, endDate } = getExportRange(baseDate, exportRangeMode);
+      const lessonsQuery = query(
+        collection(db, 'lessons'),
+        where('date', '>=', startDate),
+        where('date', '<=', endDate),
+      );
+      const snapshot = await getDocs(lessonsQuery);
+      const exportLessons = snapshot.docs
+        .map((lessonDoc) => ({
+          id: lessonDoc.id,
+          ...lessonDoc.data(),
+        }) as Lesson)
+        .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
+
+      const selectedFields = EXPORT_FIELDS.filter((field) => selectedExportFields.includes(field.key));
+      const headers = selectedFields.map((field) => escapeCSVValue(field.label)).join(',');
+      const rows = exportLessons.map((lesson) => {
+        const flattenedLesson = flattenLessonForExport(lesson);
+        return selectedFields.map((field) => escapeCSVValue(flattenedLesson[field.key])).join(',');
+      });
+      const csvString = [headers, ...rows].join('\n');
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `教學概況_${exportRangeMode === 'day' ? '當天' : '當週'}_${startDate}_${endDate}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      window.alert('匯出失敗，請稍後再試。');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black text-slate-800">教學概況匯出</h3>
+            <p className="text-[10px] font-bold text-slate-400">{exportRangeMode === 'day' ? '匯出當天完整課程' : '匯出當週週一至週日課程'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={exportToCSV}
+            disabled={isExporting}
+            className="h-10 px-3 bg-primary text-slate-900 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all"
+          >
+            <Download size={14} />
+            {isExporting ? '匯出中' : 'CSV'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+          {(['day', 'week'] as ExportRangeMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setExportRangeMode(mode)}
+              className={cn(
+                'h-9 rounded-lg text-xs font-black transition-all',
+                exportRangeMode === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400',
+              )}
+            >
+              {mode === 'day' ? '當天' : '當週'}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {EXPORT_FIELDS.map((field) => (
+            <label key={field.key} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-bold text-slate-600">
+              <input
+                type="checkbox"
+                checked={selectedExportFields.includes(field.key)}
+                onChange={() => toggleExportField(field.key)}
+                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+              />
+              <span>{field.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       {/* List of all time slots */}
       <div className="space-y-3">
         {TIME_SLOTS.map((slot) => {

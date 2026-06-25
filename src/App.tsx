@@ -260,7 +260,7 @@ function MainApp() {
                 </button>
               </div>
 
-              <PoolMonitor lessons={lessons} />
+              <PoolMonitor lessons={lessons} baseDate={selectedDate} />
 
               <WeeklyVenueSchedule
                 isOpen={isWeeklyScheduleOpen}
