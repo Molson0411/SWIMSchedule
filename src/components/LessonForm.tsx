@@ -10,6 +10,8 @@ import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { lessonsService } from '../services/lessonsService';
 import { notificationService } from '../services/notificationService';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface LessonFormProps {
   isOpen: boolean;
@@ -30,6 +32,94 @@ const createDefaultLessonValues = (): Partial<Lesson> => ({
   lane: 1,
 });
 
+type CapacityStatus = 'safe' | 'warning' | 'full';
+
+function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function hasTimeOverlap(startTime: string, endTime: string, existingStartTime: string, existingEndTime: string) {
+  return timeToMinutes(startTime) < timeToMinutes(existingEndTime) && timeToMinutes(endTime) > timeToMinutes(existingStartTime);
+}
+
+function useCapacityCheck({
+  date,
+  startTime,
+  endTime,
+  poolType,
+  lane,
+  excludeLessonId,
+}: {
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  poolType?: PoolType;
+  lane?: number;
+  excludeLessonId?: string;
+}) {
+  const [capacity, setCapacity] = useState({
+    current: 0,
+    max: poolType === 'Small' ? 30 : 8,
+    status: 'safe' as CapacityStatus,
+    loading: false,
+  });
+
+  useEffect(() => {
+    const max = poolType === 'Small' ? 30 : 8;
+
+    if (!date || !startTime || !endTime || !poolType || (poolType === '25m' && !lane)) {
+      setCapacity({ current: 0, max, status: 'safe', loading: false });
+      return;
+    }
+
+    let isActive = true;
+
+    async function fetchCapacity() {
+      setCapacity((currentCapacity) => ({ ...currentCapacity, max, loading: true }));
+
+      const lessonsQuery = query(collection(db, 'lessons'), where('date', '==', date));
+      const snapshot = await getDocs(lessonsQuery);
+      const lessons = snapshot.docs.map((lessonDoc) => ({
+        id: lessonDoc.id,
+        ...lessonDoc.data(),
+      })) as Lesson[];
+
+      const current = lessons
+        .filter((lesson) => lesson.id !== excludeLessonId)
+        .filter((lesson) => hasTimeOverlap(startTime, endTime, lesson.startTime, lesson.endTime))
+        .filter((lesson) => {
+          if (poolType === '25m') {
+            return lesson.poolType === '25m' && lesson.lane === lane;
+          }
+
+          return lesson.poolType === 'Small';
+        })
+        .reduce((total, lesson) => total + Number(lesson.studentCount || 0) + 1, 0);
+
+      const usage = current / max;
+      const status: CapacityStatus = usage >= 1 ? 'full' : usage >= 0.8 ? 'warning' : 'safe';
+
+      if (isActive) {
+        setCapacity({ current, max, status, loading: false });
+      }
+    }
+
+    fetchCapacity().catch((error) => {
+      console.error('Capacity check failed:', error);
+      if (isActive) {
+        setCapacity({ current: 0, max, status: 'safe', loading: false });
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [date, endTime, excludeLessonId, lane, poolType, startTime]);
+
+  return capacity;
+}
+
 export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: LessonFormProps) {
   const { user, profile } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +133,18 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const poolType = watch('poolType');
   const lessonType = watch('lessonType');
   const startTime = watch('startTime');
+  const endTime = watch('endTime');
+  const selectedLane = watch('lane');
   const selectedDate = watch('date') || format(new Date(), 'yyyy-MM-dd');
+  const capacity = useCapacityCheck({
+    date: selectedDate,
+    startTime,
+    endTime,
+    poolType,
+    lane: selectedLane,
+    excludeLessonId: editLesson?.id,
+  });
+  const isCapacityFull = capacity.status === 'full';
 
   const resetFormState = () => {
     reset(createDefaultLessonValues());
@@ -168,6 +269,13 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
 
       if (!editLesson && isRecurring && !repeatUntil) {
         setError('請選擇重複課程的結束日期。');
+        return;
+      }
+
+      if (isCapacityFull) {
+        const message = '該時段已額滿，請選擇其他時間或水道。';
+        setError(message);
+        window.alert(message);
         return;
       }
 
@@ -371,6 +479,8 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
                 </Field>
               )}
 
+              <CapacityAlertBox capacity={capacity} />
+
               <Field label="課程類型">
                 <div className="grid grid-cols-4 gap-2">
                   {(['1:1', '1:2', '1:3', 'Group'] as LessonType[]).map((type) => (
@@ -453,7 +563,13 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
                 )}
                 <button
                   type="submit"
-                  className="flex-1 h-14 bg-primary text-slate-800 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl shadow-primary/20 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                  disabled={isCapacityFull}
+                  className={cn(
+                    'flex-1 h-14 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all',
+                    isCapacityFull
+                      ? 'bg-slate-200 text-slate-400 shadow-none cursor-not-allowed active:scale-100'
+                      : 'bg-primary text-slate-800 shadow-primary/20',
+                  )}
                 >
                   <Save size={18} />
                   儲存
@@ -468,6 +584,39 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
 }
 
 const inputClassName = 'w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm font-bold';
+
+function CapacityAlertBox({
+  capacity,
+}: {
+  capacity: {
+    current: number;
+    max: number;
+    status: CapacityStatus;
+    loading: boolean;
+  };
+}) {
+  const message =
+    capacity.status === 'full'
+      ? `🚫 該時段已額滿 (${capacity.current} / ${capacity.max} 人)，請選擇其他時間或水道`
+      : capacity.status === 'warning'
+        ? `⚠️ 該時段即將額滿：${capacity.current} / ${capacity.max} 人`
+        : `🏊 該時段目前人數：${capacity.current} / ${capacity.max} 人`;
+
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border px-4 py-3 text-xs font-black leading-6 transition-all',
+        capacity.status === 'full'
+          ? 'border-red-200 bg-red-50 text-red-700'
+          : capacity.status === 'warning'
+            ? 'border-orange-200 bg-orange-50 text-orange-700'
+            : 'border-green-100 bg-green-50 text-green-700',
+      )}
+    >
+      {capacity.loading ? '正在更新泳池人數...' : message}
+    </div>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
