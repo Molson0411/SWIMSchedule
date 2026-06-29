@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UsersRound, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { normalizeAvailability } from '../lib/availability';
@@ -6,78 +6,53 @@ import { usersService } from '../services/usersService';
 import { UserProfile } from '../types';
 import { TIMETABLE_HOURS, WEEK_DAYS } from './WeeklyTimetable';
 
-interface CoachAvailabilityTimetableProps {
+interface GlobalAvailabilityGridProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface AvailabilityGridEntry {
-  key: string;
+interface AvailableCoach {
+  uid: string;
   coachName: string;
-  startTime: string;
-  endTime: string;
 }
 
-type AvailabilityGrid = Map<string, AvailabilityGridEntry[]>;
+const DAY_VALUES = [1, 2, 3, 4, 5, 6, 0] as const;
 
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
 }
 
-function getCellKey(dayIndex: number, hourLabel: string) {
-  return `${dayIndex}-${hourLabel}`;
-}
+export function getAvailableCoaches(coachesList: UserProfile[], day: number, time: string): AvailableCoach[] {
+  const targetMinutes = timeToMinutes(time);
+  if (!Number.isFinite(targetMinutes)) return [];
 
-export function groupCoachAvailability(users: UserProfile[]): AvailabilityGrid {
-  const grid: AvailabilityGrid = new Map();
+  return coachesList
+    .filter((coach) => {
+      const dayAvailability = normalizeAvailability(coach.availability).find(
+        (availabilityDay) => availabilityDay.day === day && availabilityDay.isAvailable,
+      );
 
-  users
-    .filter((user) => user.role === 'Coach')
-    .forEach((user) => {
-      const coachName = user.displayName?.trim() || user.email || '未命名教練';
-
-      normalizeAvailability(user.availability).forEach((day) => {
-        if (!day.isAvailable) return;
-
-        const dayIndex = (day.day + 6) % 7;
-        day.slots.forEach((slot) => {
-          const slotStart = timeToMinutes(slot.startTime);
-          const slotEnd = timeToMinutes(slot.endTime);
-          if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd) || slotStart >= slotEnd) return;
-
-          TIMETABLE_HOURS.forEach((hourLabel) => {
-            const hourStart = timeToMinutes(hourLabel);
-            const hourEnd = hourStart + 60;
-            if (slotStart >= hourEnd || slotEnd <= hourStart) return;
-
-            const cellKey = getCellKey(dayIndex, hourLabel);
-            const entries = grid.get(cellKey) ?? [];
-            entries.push({
-              key: `${user.uid}-${day.day}-${slot.id}`,
-              coachName,
-              startTime: slot.startTime,
-              endTime: slot.endTime,
-            });
-            grid.set(cellKey, entries);
-          });
-        });
+      return dayAvailability?.slots.some((slot) => {
+        const startMinutes = timeToMinutes(slot.startTime);
+        const endMinutes = timeToMinutes(slot.endTime);
+        return Number.isFinite(startMinutes)
+          && Number.isFinite(endMinutes)
+          && startMinutes <= targetMinutes
+          && targetMinutes < endMinutes;
       });
-    });
-
-  grid.forEach((entries) => {
-    entries.sort((a, b) => a.startTime.localeCompare(b.startTime) || a.coachName.localeCompare(b.coachName));
-  });
-
-  return grid;
+    })
+    .map((coach) => ({
+      uid: coach.uid,
+      coachName: coach.displayName?.trim() || coach.email || '未命名教練',
+    }))
+    .sort((a, b) => a.coachName.localeCompare(b.coachName));
 }
 
-export function CoachAvailabilityTimetable({ isOpen, onClose }: CoachAvailabilityTimetableProps) {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+export function GlobalAvailabilityGrid({ isOpen, onClose }: GlobalAvailabilityGridProps) {
+  const [coachesList, setCoachesList] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const availabilityGrid = useMemo(() => groupCoachAvailability(users), [users]);
-  const coachCount = users.filter((user) => user.role === 'Coach').length;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -85,12 +60,16 @@ export function CoachAvailabilityTimetable({ isOpen, onClose }: CoachAvailabilit
     setIsLoading(true);
     setError(null);
     const unsubscribe = usersService.subscribeToUsers(
-      (data) => {
-        setUsers(data);
+      (users) => {
+        setCoachesList(
+          users.filter(
+            (user) => user.role === 'Coach' && Array.isArray(user.availability) && user.availability.length > 0,
+          ),
+        );
         setIsLoading(false);
       },
       () => {
-        setUsers([]);
+        setCoachesList([]);
         setIsLoading(false);
         setError('讀取教練空檔失敗，請稍後再試。');
       },
@@ -105,7 +84,7 @@ export function CoachAvailabilityTimetable({ isOpen, onClose }: CoachAvailabilit
         <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4">
           <motion.button
             type="button"
-            aria-label="關閉教練空檔總表"
+            aria-label="關閉全局教練空檔總表"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -116,7 +95,7 @@ export function CoachAvailabilityTimetable({ isOpen, onClose }: CoachAvailabilit
           <motion.section
             role="dialog"
             aria-modal="true"
-            aria-labelledby="coach-availability-title"
+            aria-labelledby="global-availability-title"
             initial={{ opacity: 0, y: 20, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -128,8 +107,8 @@ export function CoachAvailabilityTimetable({ isOpen, onClose }: CoachAvailabilit
                   <UsersRound size={21} />
                 </div>
                 <div className="min-w-0">
-                  <h2 id="coach-availability-title" className="text-base font-black text-[#2a0726] sm:text-lg">教練可排課時間總表</h2>
-                  <p className="truncate text-xs font-bold text-slate-500">共 {coachCount} 位教練</p>
+                  <h2 id="global-availability-title" className="text-base font-black text-[#2a0726] sm:text-lg">全局教練空檔總表</h2>
+                  <p className="truncate text-xs font-bold text-slate-500">共 {coachesList.length} 位已設定空檔的教練</p>
                 </div>
               </div>
               <button type="button" aria-label="關閉" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600">
@@ -156,16 +135,17 @@ export function CoachAvailabilityTimetable({ isOpen, onClose }: CoachAvailabilit
                     <tr key={hourLabel}>
                       <th scope="row" className="sticky left-0 z-10 w-20 border border-slate-300 bg-slate-100 p-3 text-center align-top font-black text-slate-700">{hourLabel}</th>
                       {WEEK_DAYS.map((day, dayIndex) => {
-                        const entries = availabilityGrid.get(getCellKey(dayIndex, hourLabel)) ?? [];
+                        const availableCoaches = getAvailableCoaches(coachesList, DAY_VALUES[dayIndex], hourLabel);
 
                         return (
                           <td key={`${day}-${hourLabel}`} className="h-20 whitespace-normal break-words border border-slate-300 p-2 align-top">
-                            {entries.map((entry) => (
-                              <div key={entry.key} className="mb-2 border-l-2 border-emerald-400 pl-2 leading-5 last:mb-0">
-                                <span className="font-black text-[#2a0726]">{entry.coachName}</span>
-                                <span className="block font-mono text-[10px] text-slate-500">{entry.startTime}-{entry.endTime}</span>
-                              </div>
-                            ))}
+                            <div className="flex flex-wrap gap-1.5">
+                              {availableCoaches.map((coach) => (
+                                <span key={coach.uid} className="inline-flex rounded-md bg-[#d5f4d8] px-2 py-1 text-[10px] font-black text-[#2a0726]">
+                                  {coach.coachName}
+                                </span>
+                              ))}
+                            </div>
                           </td>
                         );
                       })}

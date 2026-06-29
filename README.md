@@ -1,5 +1,11 @@
 # SWIMSchedule
 
+## 2026-06-29 管理員全局教練空檔總表
+- 管理頁的空檔元件正式命名為 `GlobalAvailabilityGrid`，並維持管理員專屬入口。
+- `useEffect` 即時讀取 `users` 集合，只保留角色為 Coach 且具有非空 `availability` 的 `coachesList`。
+- 新增 `getAvailableCoaches(day, time)`，將時間轉為分鐘後判斷 `startTime <= time < endTime`。
+- 原生 HTML Table 沿用一週總表的星期一至日與 09:00 至 20:00 軸線，符合條件的教練以薄荷綠姓名標籤顯示並可直接複製到 Excel。
+
 ## 2026-06-29 單日多時段與教練空檔總表
 - 個人可排課時間升級為每天可新增、刪除多個 `slots`，支援上午與下午等不連續空檔。
 - 儲存前會檢查每個啟用日是否至少有一段時間、起訖順序是否正確，以及同日各時段是否重疊。

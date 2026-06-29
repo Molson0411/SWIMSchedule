@@ -8,7 +8,7 @@ import { MonthlyReport } from './components/MonthlyReport';
 import { UserManagement } from './components/UserManagement';
 import { WeeklyTimetable } from './components/WeeklyTimetable';
 import { AvailabilityModal } from './components/AvailabilityModal';
-import { CoachAvailabilityTimetable } from './components/CoachAvailabilityTimetable';
+import { GlobalAvailabilityGrid } from './components/GlobalAvailabilityGrid';
 import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
 import { Lesson } from './types';
@@ -98,7 +98,7 @@ function MainApp() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isWeeklyTimetableOpen, setIsWeeklyTimetableOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
-  const [isCoachAvailabilityOpen, setIsCoachAvailabilityOpen] = useState(false);
+  const [isGlobalAvailabilityOpen, setIsGlobalAvailabilityOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
@@ -330,11 +330,11 @@ function MainApp() {
                 <div className="flex justify-end px-4 pt-4">
                   <button
                     type="button"
-                    onClick={() => setIsCoachAvailabilityOpen(true)}
+                    onClick={() => setIsGlobalAvailabilityOpen(true)}
                     className="flex h-10 items-center gap-2 rounded-lg bg-[#2a0726] px-3 text-[10px] font-black text-white shadow-lg active:scale-95 transition-all"
                   >
                     <Table2 size={14} />
-                    教練空檔總表
+                    全局教練空檔表
                   </button>
                 </div>
               )}
@@ -455,9 +455,9 @@ function MainApp() {
         userId={user.uid}
       />
 
-      <CoachAvailabilityTimetable
-        isOpen={isCoachAvailabilityOpen}
-        onClose={() => setIsCoachAvailabilityOpen(false)}
+      <GlobalAvailabilityGrid
+        isOpen={isGlobalAvailabilityOpen}
+        onClose={() => setIsGlobalAvailabilityOpen(false)}
       />
     </div>
   );
