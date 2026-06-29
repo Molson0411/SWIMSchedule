@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { AlertCircle, CalendarClock, CheckCircle2, Save, X } from 'lucide-react';
+import { AlertCircle, CalendarClock, CheckCircle2, Plus, Save, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { db } from '../lib/firebase';
-import { AvailabilityDay } from '../types';
+import { createAvailabilitySlot, createDefaultAvailability, normalizeAvailability } from '../lib/availability';
+import { AvailabilityDay, AvailabilityTimeSlot } from '../types';
 
 interface AvailabilityModalProps {
   isOpen: boolean;
@@ -11,39 +12,26 @@ interface AvailabilityModalProps {
   userId: string;
 }
 
-const DEFAULT_AVAILABILITY: AvailabilityDay[] = [
-  { day: 1, label: '星期一', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-  { day: 2, label: '星期二', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-  { day: 3, label: '星期三', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-  { day: 4, label: '星期四', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-  { day: 5, label: '星期五', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-  { day: 6, label: '星期六', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-  { day: 0, label: '星期日', isAvailable: false, startTime: '09:00', endTime: '20:00' },
-];
+export function validateAvailability(availability: AvailabilityDay[]) {
+  for (const day of availability) {
+    if (!day.isAvailable) continue;
+    if (day.slots.length === 0) return `請為${day.label}新增至少一個時段。`;
 
-function createDefaultAvailability() {
-  return DEFAULT_AVAILABILITY.map((day) => ({ ...day }));
-}
+    const sortedSlots = [...day.slots].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    for (let index = 0; index < sortedSlots.length; index += 1) {
+      const slot = sortedSlots[index];
+      if (!slot.startTime || !slot.endTime || slot.startTime >= slot.endTime) {
+        return `請確認${day.label}第 ${index + 1} 段的開始與結束時間。`;
+      }
 
-function normalizeAvailability(value: unknown): AvailabilityDay[] {
-  if (!Array.isArray(value)) return createDefaultAvailability();
+      const previousSlot = sortedSlots[index - 1];
+      if (previousSlot && slot.startTime < previousSlot.endTime) {
+        return `${day.label}的可排課時段不可重疊。`;
+      }
+    }
+  }
 
-  const savedDays = new Map<number, Partial<AvailabilityDay>>(
-    value
-      .filter((item): item is Partial<AvailabilityDay> => Boolean(item) && typeof item === 'object')
-      .filter((item) => typeof item.day === 'number')
-      .map((item) => [item.day as number, item]),
-  );
-
-  return DEFAULT_AVAILABILITY.map((defaultDay) => {
-    const savedDay = savedDays.get(defaultDay.day);
-    return {
-      ...defaultDay,
-      isAvailable: Boolean(savedDay?.isAvailable),
-      startTime: typeof savedDay?.startTime === 'string' ? savedDay.startTime : defaultDay.startTime,
-      endTime: typeof savedDay?.endTime === 'string' ? savedDay.endTime : defaultDay.endTime,
-    };
-  });
+  return null;
 }
 
 export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModalProps) {
@@ -87,19 +75,53 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const updateAvailabilityDay = (day: number, updates: Partial<AvailabilityDay>) => {
+  const updateAvailabilitySlot = (day: number, slotId: string, updates: Partial<AvailabilityTimeSlot>) => {
     setAvailability((currentAvailability) =>
-      currentAvailability.map((item) => (item.day === day ? { ...item, ...updates } : item)),
+      currentAvailability.map((item) =>
+        item.day === day
+          ? {
+              ...item,
+              slots: item.slots.map((slot) => (slot.id === slotId ? { ...slot, ...updates } : slot)),
+            }
+          : item,
+      ),
+    );
+  };
+
+  const toggleAvailabilityDay = (day: number, isAvailable: boolean) => {
+    setAvailability((currentAvailability) =>
+      currentAvailability.map((item) =>
+        item.day === day
+          ? {
+              ...item,
+              isAvailable,
+              slots: isAvailable && item.slots.length === 0 ? [createAvailabilitySlot()] : item.slots,
+            }
+          : item,
+      ),
+    );
+  };
+
+  const addAvailabilitySlot = (day: number) => {
+    setAvailability((currentAvailability) =>
+      currentAvailability.map((item) =>
+        item.day === day ? { ...item, slots: [...item.slots, createAvailabilitySlot()] } : item,
+      ),
+    );
+  };
+
+  const removeAvailabilitySlot = (day: number, slotId: string) => {
+    setAvailability((currentAvailability) =>
+      currentAvailability.map((item) =>
+        item.day === day ? { ...item, slots: item.slots.filter((slot) => slot.id !== slotId) } : item,
+      ),
     );
   };
 
   const handleSave = async () => {
-    const invalidDay = availability.find(
-      (item) => item.isAvailable && (!item.startTime || !item.endTime || item.startTime >= item.endTime),
-    );
-
-    if (invalidDay) {
-      setError(`請確認${invalidDay.label}的開始與結束時間。`);
+    const validationError = validateAvailability(availability);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -175,7 +197,7 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
                             <input
                               type="checkbox"
                               checked={item.isAvailable}
-                              onChange={(event) => updateAvailabilityDay(item.day, { isAvailable: event.target.checked })}
+                              onChange={(event) => toggleAvailabilityDay(item.day, event.target.checked)}
                               className="h-5 w-5 rounded border-slate-300 accent-[#2a0726]"
                             />
                             {item.label}
@@ -186,24 +208,45 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
                         </div>
 
                         {item.isAvailable && (
-                          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 pl-8">
-                            <input
-                              type="time"
-                              value={item.startTime}
-                              onChange={(event) => updateAvailabilityDay(item.day, { startTime: event.target.value })}
-                              aria-label={`${item.label}開始時間`}
-                              step={1800}
-                              className="h-10 min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold outline-none focus:border-[#2a0726]"
-                            />
-                            <span className="text-xs font-bold text-slate-400">至</span>
-                            <input
-                              type="time"
-                              value={item.endTime}
-                              onChange={(event) => updateAvailabilityDay(item.day, { endTime: event.target.value })}
-                              aria-label={`${item.label}結束時間`}
-                              step={1800}
-                              className="h-10 min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold outline-none focus:border-[#2a0726]"
-                            />
+                          <div className="mt-2 space-y-2 pl-8">
+                            {item.slots.map((slot, slotIndex) => (
+                              <div key={slot.id} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
+                                <input
+                                  type="time"
+                                  value={slot.startTime}
+                                  onChange={(event) => updateAvailabilitySlot(item.day, slot.id, { startTime: event.target.value })}
+                                  aria-label={`${item.label}第 ${slotIndex + 1} 段開始時間`}
+                                  step={1800}
+                                  className="h-10 min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold outline-none focus:border-[#2a0726]"
+                                />
+                                <span className="text-xs font-bold text-slate-400">至</span>
+                                <input
+                                  type="time"
+                                  value={slot.endTime}
+                                  onChange={(event) => updateAvailabilitySlot(item.day, slot.id, { endTime: event.target.value })}
+                                  aria-label={`${item.label}第 ${slotIndex + 1} 段結束時間`}
+                                  step={1800}
+                                  className="h-10 min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold outline-none focus:border-[#2a0726]"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={`刪除${item.label}第 ${slotIndex + 1} 段`}
+                                  onClick={() => removeAvailabilitySlot(item.day, slot.id)}
+                                  className="flex h-10 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 size={17} />
+                                </button>
+                              </div>
+                            ))}
+
+                            <button
+                              type="button"
+                              onClick={() => addAvailabilitySlot(item.day)}
+                              className="flex h-9 items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 text-xs font-black text-slate-600 hover:border-[#2a0726] hover:text-[#2a0726]"
+                            >
+                              <Plus size={15} />
+                              新增時段
+                            </button>
                           </div>
                         )}
                       </div>

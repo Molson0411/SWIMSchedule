@@ -12,6 +12,11 @@ export interface AvailabilityDay {
   day: number;
   label: string;
   isAvailable: boolean;
+  slots: AvailabilityTimeSlot[];
+}
+
+export interface AvailabilityTimeSlot {
+  id: string;
   startTime: string;
   endTime: string;
 }

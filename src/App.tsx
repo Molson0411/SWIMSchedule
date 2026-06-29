@@ -8,6 +8,7 @@ import { MonthlyReport } from './components/MonthlyReport';
 import { UserManagement } from './components/UserManagement';
 import { WeeklyTimetable } from './components/WeeklyTimetable';
 import { AvailabilityModal } from './components/AvailabilityModal';
+import { CoachAvailabilityTimetable } from './components/CoachAvailabilityTimetable';
 import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
 import { Lesson } from './types';
@@ -97,6 +98,7 @@ function MainApp() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isWeeklyTimetableOpen, setIsWeeklyTimetableOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
+  const [isCoachAvailabilityOpen, setIsCoachAvailabilityOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
@@ -324,6 +326,18 @@ function MainApp() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="space-y-6"
             >
+              {profile?.role === 'Admin' && (
+                <div className="flex justify-end px-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsCoachAvailabilityOpen(true)}
+                    className="flex h-10 items-center gap-2 rounded-lg bg-[#2a0726] px-3 text-[10px] font-black text-white shadow-lg active:scale-95 transition-all"
+                  >
+                    <Table2 size={14} />
+                    教練空檔總表
+                  </button>
+                </div>
+              )}
               <UserManagement />
             </motion.div>
           )}
@@ -439,6 +453,11 @@ function MainApp() {
         isOpen={isAvailabilityOpen}
         onClose={() => setIsAvailabilityOpen(false)}
         userId={user.uid}
+      />
+
+      <CoachAvailabilityTimetable
+        isOpen={isCoachAvailabilityOpen}
+        onClose={() => setIsCoachAvailabilityOpen(false)}
       />
     </div>
   );
