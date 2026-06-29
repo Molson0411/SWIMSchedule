@@ -98,13 +98,28 @@ function MainApp() {
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLessons([]);
+      return;
+    }
 
-    const unsubscribe = lessonsService.subscribeToLessons(selectedDate, (data) => {
-      setLessons(data);
-    });
+    setLessons([]);
 
-    return unsubscribe;
+    try {
+      const unsubscribe = lessonsService.subscribeToLessons(
+        selectedDate,
+        (data) => setLessons(Array.isArray(data) ? data : []),
+        (error) => {
+          console.error(`Failed to load lessons for ${selectedDate}:`, error);
+          setLessons([]);
+        },
+      );
+
+      return unsubscribe;
+    } catch (error) {
+      console.error(`Failed to subscribe to lessons for ${selectedDate}:`, error);
+      setLessons([]);
+    }
   }, [user, selectedDate]);
 
   if (authLoading) {
@@ -222,13 +237,9 @@ function MainApp() {
             >
               <div className="flex justify-between items-end mb-2">
                 <h2 className="text-xl font-bold text-gray-900">當日課程</h2>
-                <span className="text-xs font-medium text-gray-400">{lessons.length} 堂課</span>
+                <span className="text-xs font-medium text-gray-400">{lessons?.length ?? 0} 堂課</span>
               </div>
-              {lessons.length === 0 ? (
-                <div className="bg-white rounded-3xl p-12 text-center border-2 border-dashed border-gray-200">
-                  <p className="text-gray-400">今天尚未建立課程</p>
-                </div>
-              ) : (
+              {lessons?.length > 0 ? (
                 lessons.map((lesson) => (
                   <LessonCard
                     key={lesson.id}
@@ -237,6 +248,10 @@ function MainApp() {
                     onEdit={() => handleEditLesson(lesson)}
                   />
                 ))
+              ) : (
+                <div className="bg-white rounded-3xl p-12 text-center border-2 border-dashed border-gray-200">
+                  <p className="text-gray-400">該日無排課紀錄</p>
+                </div>
               )}
             </motion.div>
           )}

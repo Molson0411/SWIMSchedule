@@ -23,14 +23,18 @@ export enum FirestoreOperation {
   GET = 'get',
 }
 
-function handleFirestoreError(error: any, operationType: FirestoreOperation, path: string) {
+function normalizeFirestoreError(error: unknown, operationType: FirestoreOperation, path: string) {
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
     operationType,
     path
   };
   console.error('Firestore Error:', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  return new Error(JSON.stringify(errInfo));
+}
+
+function handleFirestoreError(error: unknown, operationType: FirestoreOperation, path: string): never {
+  throw normalizeFirestoreError(error, operationType, path);
 }
 
 function removeUndefinedFields<T extends Record<string, any>>(data: T) {
@@ -59,7 +63,11 @@ function hasTimeOverlap(
 }
 
 export const lessonsService = {
-  subscribeToLessons: (date: string, callback: (lessons: Lesson[]) => void) => {
+  subscribeToLessons: (
+    date: string,
+    callback: (lessons: Lesson[]) => void,
+    onError?: (error: Error) => void,
+  ) => {
     const q = query(
       collection(db, 'lessons'),
       where('date', '==', date),
@@ -74,7 +82,7 @@ export const lessonsService = {
         })) as Lesson[];
         callback(lessons);
       },
-      (error) => handleFirestoreError(error, FirestoreOperation.LIST, 'lessons')
+      (error) => onError?.(normalizeFirestoreError(error, FirestoreOperation.LIST, 'lessons'))
     );
   },
 
