@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addDays, format, parseISO, startOfWeek } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { lessonsService } from '../services/lessonsService';
@@ -15,6 +15,27 @@ export const WEEK_DAYS = ['星期一', '星期二', '星期三', '星期四', '�
 export const TIMETABLE_HOURS = Array.from({ length: 12 }, (_, index) => `${String(index + 9).padStart(2, '0')}:00`);
 
 type TimetableGroups = Map<string, Lesson[]>;
+
+interface WeekRange {
+  startOfWeek: Date;
+  endOfWeek: Date;
+}
+
+export function getWeekRange(referenceDate = new Date()): WeekRange {
+  const today = new Date(referenceDate);
+  today.setHours(0, 0, 0, 0);
+
+  const currentDay = today.getDay();
+  const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - distanceToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  return { startOfWeek: monday, endOfWeek: sunday };
+}
 
 function getGroupKey(dayIndex: number, hour: number) {
   return `${dayIndex}-${String(hour).padStart(2, '0')}:00`;
@@ -43,16 +64,18 @@ export function groupLessonsByDayAndHour(lessons: Lesson[]): TimetableGroups {
 }
 
 export function WeeklyTimetable({ isOpen, onClose, baseDate }: WeeklyTimetableProps) {
-  const [viewDate, setViewDate] = useState(() => parseISO(baseDate));
+  const [weekRange, setWeekRange] = useState<WeekRange>(() => getWeekRange(parseISO(baseDate)));
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const weekStart = useMemo(() => startOfWeek(viewDate, { weekStartsOn: 1 }), [viewDate]);
-  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDays(weekRange.startOfWeek, index)),
+    [weekRange],
+  );
   const groupedLessons = useMemo(() => groupLessonsByDayAndHour(lessons), [lessons]);
 
   useEffect(() => {
-    if (isOpen) setViewDate(parseISO(baseDate));
+    if (isOpen) setWeekRange(getWeekRange(parseISO(baseDate)));
   }, [baseDate, isOpen]);
 
   useEffect(() => {
@@ -60,15 +83,23 @@ export function WeeklyTimetable({ isOpen, onClose, baseDate }: WeeklyTimetablePr
 
     // 僅在總表開啟時訂閱目前顯示週次，切週時會自動清除舊訂閱。
     setIsLoading(true);
-    const startDate = format(weekStart, 'yyyy-MM-dd');
-    const endDate = format(addDays(weekStart, 6), 'yyyy-MM-dd');
+    const startDate = format(weekRange.startOfWeek, 'yyyy-MM-dd');
+    const endDate = format(weekRange.endOfWeek, 'yyyy-MM-dd');
     const unsubscribe = lessonsService.subscribeToDateRange(startDate, endDate, (data) => {
       setLessons(data);
       setIsLoading(false);
     });
 
     return unsubscribe;
-  }, [isOpen, weekStart]);
+  }, [isOpen, weekRange]);
+
+  const changeWeek = (days: number) => {
+    setWeekRange((currentRange) => getWeekRange(addDays(currentRange.startOfWeek, days)));
+  };
+
+  const handleThisWeek = () => {
+    setWeekRange(getWeekRange(new Date()));
+  };
 
   return (
     <AnimatePresence>
@@ -108,13 +139,13 @@ export function WeeklyTimetable({ isOpen, onClose, baseDate }: WeeklyTimetablePr
 
               <div className="flex items-center gap-2">
                 <div className="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50">
-                  <button type="button" aria-label="上一週" onClick={() => setViewDate((date) => addDays(date, -7))} className="flex h-full w-10 items-center justify-center text-slate-600 hover:bg-white">
+                  <button type="button" aria-label="上一週" onClick={() => changeWeek(-7)} className="flex h-full w-10 items-center justify-center text-slate-600 hover:bg-white">
                     <ChevronLeft size={19} />
                   </button>
-                  <button type="button" onClick={() => setViewDate(parseISO(baseDate))} className="h-full border-x border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-white">
+                  <button type="button" onClick={handleThisWeek} className="h-full border-x border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-white">
                     本週
                   </button>
-                  <button type="button" aria-label="下一週" onClick={() => setViewDate((date) => addDays(date, 7))} className="flex h-full w-10 items-center justify-center text-slate-600 hover:bg-white">
+                  <button type="button" aria-label="下一週" onClick={() => changeWeek(7)} className="flex h-full w-10 items-center justify-center text-slate-600 hover:bg-white">
                     <ChevronRight size={19} />
                   </button>
                 </div>
