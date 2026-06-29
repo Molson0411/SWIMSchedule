@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { addWeeks, format, parseISO } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
 import { Lesson, LessonType, PoolType } from '../types';
 import { TIME_SLOTS, checkCollision } from '../lib/scheduling';
 import { cn } from '../lib/utils';
@@ -33,16 +32,24 @@ const createDefaultLessonValues = (): Partial<Lesson> => ({
 });
 
 type CapacityStatus = 'safe' | 'warning' | 'full';
-export type RepeatMode = 'none' | 'weekday' | 'weekly';
+export type RepeatMode = 'none' | 'custom';
 
-export function generateLessonDates(startDate: string, endDate: string, repeatMode: RepeatMode) {
+const DAY_OPTIONS = [
+  { value: 1, label: '一' },
+  { value: 2, label: '二' },
+  { value: 3, label: '三' },
+  { value: 4, label: '四' },
+  { value: 5, label: '五' },
+  { value: 6, label: '六' },
+  { value: 0, label: '日' },
+] as const;
+
+export function generateLessonDates(startDate: string, endDate: string, selectedDays: number[]) {
   const start = parseISO(startDate);
 
   if (Number.isNaN(start.getTime())) {
     throw new Error('開始日期格式不正確。');
   }
-
-  if (repeatMode === 'none') return [format(start, 'yyyy-MM-dd')];
 
   const end = parseISO(endDate);
   if (Number.isNaN(end.getTime())) {
@@ -57,17 +64,10 @@ export function generateLessonDates(startDate: string, endDate: string, repeatMo
   const currentDate = new Date(start);
 
   while (currentDate <= end) {
-    const dayOfWeek = currentDate.getDay();
-
-    if (repeatMode === 'weekday') {
-      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-        dates.push(format(currentDate, 'yyyy-MM-dd'));
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    } else {
+    if (selectedDays.includes(currentDate.getDay())) {
       dates.push(format(currentDate, 'yyyy-MM-dd'));
-      currentDate.setDate(currentDate.getDate() + 7);
     }
+    currentDate.setDate(currentDate.getDate() + 1);
   }
 
   return dates;
@@ -164,6 +164,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const [error, setError] = useState<string | null>(null);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
   const [repeatUntil, setRepeatUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
+  const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]);
 
   const { register, handleSubmit, watch, setValue, reset } = useForm<Partial<Lesson>>({
     defaultValues: createDefaultLessonValues(),
@@ -199,6 +200,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
     reset(createDefaultLessonValues());
     setRepeatMode('none');
     setRepeatUntil(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
+    setSelectedDays([1, 2, 3, 4, 5]);
   };
 
   useEffect(() => {
@@ -264,9 +266,12 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
       return [{ ...baseLesson, id: editLesson.id }];
     }
 
-    const lessonDates = generateLessonDates(data.date || '', repeatUntil, repeatMode);
+    const lessonDates =
+      repeatMode === 'none'
+        ? [data.date || '']
+        : generateLessonDates(data.date || '', repeatUntil, selectedDays);
     if (lessonDates.length === 0) {
-      throw new Error('所選範圍內沒有可建立的平日課程。');
+      throw new Error('所選範圍內沒有符合上課星期的日期。');
     }
 
     return lessonDates.map((date) => ({
@@ -306,6 +311,13 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
 
       if (!editLesson && repeatMode !== 'none' && !repeatUntil) {
         setError('請選擇重複課程的結束日期。');
+        return;
+      }
+
+      if (!editLesson && repeatMode === 'custom' && selectedDays.length === 0) {
+        const message = '請至少選擇一個上課星期';
+        setError(message);
+        window.alert(message);
         return;
       }
 
@@ -396,6 +408,14 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
     }
   };
 
+  const handleDayToggle = (day: number) => {
+    setSelectedDays((currentDays) =>
+      currentDays.includes(day)
+        ? currentDays.filter((selectedDay) => selectedDay !== day)
+        : [...currentDays, day],
+    );
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -460,19 +480,16 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
                   <div>
                     <span className="text-xs font-black text-slate-700">重複方式</span>
                     <p className="mt-1 text-[10px] font-bold text-slate-400">
-                      {repeatMode === 'weekday'
-                        ? '週一至週五連續建立，週末自動略過'
-                        : repeatMode === 'weekly'
-                          ? `每週 ${format(parseISO(selectedDate), 'eeee', { locale: zhTW })} 建立一堂`
-                          : '只建立所選日期的一堂課'}
+                      {repeatMode === 'custom'
+                        ? `依選取星期批次建立，目前已選 ${selectedDays.length} 天`
+                        : '只建立所選日期的一堂課'}
                     </p>
                   </div>
 
-                  <div role="radiogroup" aria-label="課程重複方式" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-200 p-1">
+                  <div role="radiogroup" aria-label="課程重複方式" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-200 p-1">
                     {([
                       { value: 'none', label: '單堂' },
-                      { value: 'weekday', label: '平日連續' },
-                      { value: 'weekly', label: '每週' },
+                      { value: 'custom', label: '自訂星期重複' },
                     ] as const).map((option) => (
                       <label
                         key={option.value}
@@ -494,16 +511,47 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
                     ))}
                   </div>
 
-                  {repeatMode !== 'none' && (
-                    <Field label="重複到哪一天">
-                      <input
-                        type="date"
-                        value={repeatUntil}
-                        onChange={(event) => setRepeatUntil(event.target.value)}
-                        min={selectedDate}
-                        className={inputClassName}
-                      />
-                    </Field>
+                  {repeatMode === 'custom' && (
+                    <>
+                      <Field label="重複到哪一天">
+                        <input
+                          type="date"
+                          value={repeatUntil}
+                          onChange={(event) => setRepeatUntil(event.target.value)}
+                          min={selectedDate}
+                          className={inputClassName}
+                        />
+                      </Field>
+
+                      <fieldset className="space-y-2">
+                        <legend className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">上課星期</legend>
+                        <div className="flex gap-1.5 overflow-x-auto pb-1">
+                          {DAY_OPTIONS.map((day) => {
+                            const isSelected = selectedDays.includes(day.value);
+
+                            return (
+                              <label
+                                key={day.value}
+                                className={cn(
+                                  'flex h-12 min-w-10 flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border text-[10px] font-black transition-all',
+                                  isSelected
+                                    ? 'border-[#2a0726] bg-[#d5f4d8] text-[#2a0726]'
+                                    : 'border-slate-200 bg-white text-slate-400',
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleDayToggle(day.value)}
+                                  className="h-3.5 w-3.5 rounded border-slate-300 accent-[#2a0726]"
+                                />
+                                週{day.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    </>
                   )}
                 </div>
               )}
