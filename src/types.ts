@@ -8,12 +8,20 @@ export enum OperationType {
   GET = 'get',
 }
 
-export interface UserProfile {
+export interface AvailabilityDay {
+  day: number;
+  label: string;
+  isAvailable: boolean;
+  startTime: string;
+  endTime: string;
+}
 
+export interface UserProfile {
   uid: string;
   email: string;
   role: UserRole;
   displayName?: string;
+  availability?: AvailabilityDay[];
 }
 
 export type PoolType = '25m' | 'Small';

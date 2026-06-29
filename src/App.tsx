@@ -7,6 +7,7 @@ import { PoolMonitor } from './components/PoolMonitor';
 import { MonthlyReport } from './components/MonthlyReport';
 import { UserManagement } from './components/UserManagement';
 import { WeeklyTimetable } from './components/WeeklyTimetable';
+import { AvailabilityModal } from './components/AvailabilityModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
 import { Lesson } from './types';
@@ -95,6 +96,7 @@ function MainApp() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isWeeklyTimetableOpen, setIsWeeklyTimetableOpen] = useState(false);
+  const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
@@ -396,6 +398,14 @@ function MainApp() {
                   <span>帳號與權限</span>
                   <ChevronRight size={18} className="text-gray-300 group-hover:translate-x-1 transition-transform" />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAvailabilityOpen(true)}
+                  className="w-full p-5 text-left font-medium border-b hover:bg-gray-50 flex justify-between items-center group transition-colors"
+                >
+                  <span>可排課時間設定</span>
+                  <ChevronRight size={18} className="text-gray-300 group-hover:translate-x-1 transition-transform" />
+                </button>
                 <button onClick={logout} className="w-full p-5 text-left font-bold text-red-500 hover:bg-red-50 transition-colors">
                   登出
                 </button>
@@ -424,6 +434,12 @@ function MainApp() {
       />
 
       <OnboardingModal userId={user.uid} isAuthenticated={Boolean(user)} />
+
+      <AvailabilityModal
+        isOpen={isAvailabilityOpen}
+        onClose={() => setIsAvailabilityOpen(false)}
+        userId={user.uid}
+      />
     </div>
   );
 }
