@@ -10,7 +10,8 @@ import {
   getDocs,
   orderBy,
   serverTimestamp,
-  Timestamp
+  Timestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Lesson, OperationType } from '../types';
@@ -142,6 +143,24 @@ export const lessonsService = {
     }
   },
 
+  getLessonsInDateRange: async (startDate: string, endDate: string) => {
+    try {
+      const lessonsQuery = query(
+        collection(db, 'lessons'),
+        where('date', '>=', startDate),
+        where('date', '<=', endDate),
+      );
+      const snapshot = await getDocs(lessonsQuery);
+
+      return snapshot.docs.map((lessonDoc) => ({
+        id: lessonDoc.id,
+        ...lessonDoc.data(),
+      })) as Lesson[];
+    } catch (error) {
+      handleFirestoreError(error, FirestoreOperation.LIST, 'lessons');
+    }
+  },
+
   createLesson: async (lesson: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       const { id: _id, ...lessonWithoutId } = lesson as Partial<Lesson>;
@@ -161,6 +180,44 @@ export const lessonsService = {
       });
     } catch (error) {
       handleFirestoreError(error, FirestoreOperation.CREATE, 'lessons');
+    }
+  },
+
+  batchCreateLessons: async (lessons: Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+    try {
+      if (lessons.length === 0) {
+        throw new Error('沒有可建立的課程。');
+      }
+
+      if (lessons.length > 500) {
+        throw new Error('單次最多可建立 500 堂課，請縮短重複日期範圍。');
+      }
+
+      const batch = writeBatch(db);
+      const lessonsRef = collection(db, 'lessons');
+
+      lessons.forEach((lesson) => {
+        const { id: _id, ...lessonWithoutId } = lesson as Partial<Lesson>;
+        const lessonToCreate = removeUndefinedFields({
+          ...lessonWithoutId,
+          studentNames: lessonWithoutId.studentNames ?? '',
+          adminNote: lessonWithoutId.adminNote ?? '',
+          lane: lessonWithoutId.poolType === '25m' ? lessonWithoutId.lane : null,
+        });
+        const lessonRef = doc(lessonsRef);
+
+        batch.set(lessonRef, {
+          status: 'Pending',
+          checkedIn: false,
+          ...lessonToCreate,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, FirestoreOperation.CREATE, 'lessons/batch');
     }
   },
 

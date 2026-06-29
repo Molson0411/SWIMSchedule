@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
-import { addWeeks, format, isAfter, parseISO } from 'date-fns';
+import { addWeeks, format, parseISO } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Lesson, LessonType, PoolType } from '../types';
 import { TIME_SLOTS, checkCollision } from '../lib/scheduling';
@@ -33,6 +33,45 @@ const createDefaultLessonValues = (): Partial<Lesson> => ({
 });
 
 type CapacityStatus = 'safe' | 'warning' | 'full';
+export type RepeatMode = 'none' | 'weekday' | 'weekly';
+
+export function generateLessonDates(startDate: string, endDate: string, repeatMode: RepeatMode) {
+  const start = parseISO(startDate);
+
+  if (Number.isNaN(start.getTime())) {
+    throw new Error('開始日期格式不正確。');
+  }
+
+  if (repeatMode === 'none') return [format(start, 'yyyy-MM-dd')];
+
+  const end = parseISO(endDate);
+  if (Number.isNaN(end.getTime())) {
+    throw new Error('結束日期格式不正確。');
+  }
+
+  if (end < start) {
+    throw new Error('重複結束日期不可早於開始日期。');
+  }
+
+  const dates: string[] = [];
+  const currentDate = new Date(start);
+
+  while (currentDate <= end) {
+    const dayOfWeek = currentDate.getDay();
+
+    if (repeatMode === 'weekday') {
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        dates.push(format(currentDate, 'yyyy-MM-dd'));
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    } else {
+      dates.push(format(currentDate, 'yyyy-MM-dd'));
+      currentDate.setDate(currentDate.getDate() + 7);
+    }
+  }
+
+  return dates;
+}
 
 function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(':').map(Number);
@@ -123,7 +162,7 @@ function useCapacityCheck({
 export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: LessonFormProps) {
   const { user, profile } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
   const [repeatUntil, setRepeatUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
 
   const { register, handleSubmit, watch, setValue, reset } = useForm<Partial<Lesson>>({
@@ -146,9 +185,19 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   });
   const isCapacityFull = capacity.status === 'full';
 
+  useEffect(() => {
+    if (repeatMode === 'none') return;
+
+    const start = parseISO(selectedDate);
+    const end = parseISO(repeatUntil);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end < start) {
+      setRepeatUntil(selectedDate);
+    }
+  }, [repeatMode, repeatUntil, selectedDate]);
+
   const resetFormState = () => {
     reset(createDefaultLessonValues());
-    setIsRecurring(false);
+    setRepeatMode('none');
     setRepeatUntil(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
   };
 
@@ -215,27 +264,15 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
       return [{ ...baseLesson, id: editLesson.id }];
     }
 
-    if (!isRecurring) {
-      return [baseLesson];
+    const lessonDates = generateLessonDates(data.date || '', repeatUntil, repeatMode);
+    if (lessonDates.length === 0) {
+      throw new Error('所選範圍內沒有可建立的平日課程。');
     }
 
-    const lessons: Partial<Lesson>[] = [];
-    let currentDate = parseISO(data.date || '');
-    const endDate = parseISO(repeatUntil);
-
-    if (isNaN(currentDate.getTime()) || isNaN(endDate.getTime())) {
-      throw new Error('日期格式不正確。');
-    }
-
-    while (!isAfter(currentDate, endDate)) {
-      lessons.push({
-        ...baseLesson,
-        date: format(currentDate, 'yyyy-MM-dd'),
-      });
-      currentDate = addWeeks(currentDate, 1);
-    }
-
-    return lessons;
+    return lessonDates.map((date) => ({
+      ...baseLesson,
+      date,
+    }));
   };
 
   const onSubmit = async (data: Partial<Lesson>) => {
@@ -267,7 +304,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
         return;
       }
 
-      if (!editLesson && isRecurring && !repeatUntil) {
+      if (!editLesson && repeatMode !== 'none' && !repeatUntil) {
         setError('請選擇重複課程的結束日期。');
         return;
       }
@@ -280,9 +317,20 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
       }
 
       const lessonsToSave = buildLessons(data);
+      if (lessonsToSave.length > 500) {
+        setError('單次最多可建立 500 堂課，請縮短重複日期範圍。');
+        return;
+      }
+
+      const firstLessonDate = lessonsToSave[0]?.date;
+      const lastLessonDate = lessonsToSave[lessonsToSave.length - 1]?.date;
+      const lessonsForCollisionCheck =
+        lessonsToSave.length > 1 && firstLessonDate && lastLessonDate
+          ? await lessonsService.getLessonsInDateRange(firstLessonDate, lastLessonDate)
+          : existingLessons;
 
       for (const lesson of lessonsToSave) {
-        const collision = checkCollision(lesson, existingLessons);
+        const collision = checkCollision(lesson, lessonsForCollisionCheck);
         if (collision.conflict) {
           setError(`課程衝突：${lesson.date} ${lesson.startTime}，${collision.message || '時段已被使用。'}`);
           return;
@@ -316,10 +364,8 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
       if (editLesson) {
         await lessonsService.updateLesson(editLesson.id, lessonsToSave[0]);
       } else {
-        await Promise.all(
-          lessonsToSave.map((lesson) =>
-            lessonsService.createLesson(lesson as Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>),
-          ),
+        await lessonsService.batchCreateLessons(
+          lessonsToSave as Omit<Lesson, 'id' | 'createdAt' | 'updatedAt'>[],
         );
 
         const summaryLesson = lessonsToSave[0];
@@ -387,7 +433,7 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label="日期">
+                <Field label={repeatMode === 'none' ? '日期' : '開始日期'}>
                   <input type="date" {...register('date')} className={inputClassName} />
                 </Field>
 
@@ -411,24 +457,45 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
 
               {!editLesson && (
                 <div className="bg-slate-50 p-4 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-black text-slate-700">每週重複課程</span>
-                      <span className="text-[10px] text-slate-400 font-bold">
-                        每週 {format(parseISO(selectedDate), 'eeee', { locale: zhTW })} 建立一堂
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsRecurring(!isRecurring)}
-                      className={cn('w-12 h-6 rounded-full transition-all relative', isRecurring ? 'bg-primary' : 'bg-slate-300')}
-                    >
-                      <div className={cn('absolute top-1 w-4 h-4 rounded-full bg-white transition-all', isRecurring ? 'left-7' : 'left-1')} />
-                    </button>
+                  <div>
+                    <span className="text-xs font-black text-slate-700">重複方式</span>
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">
+                      {repeatMode === 'weekday'
+                        ? '週一至週五連續建立，週末自動略過'
+                        : repeatMode === 'weekly'
+                          ? `每週 ${format(parseISO(selectedDate), 'eeee', { locale: zhTW })} 建立一堂`
+                          : '只建立所選日期的一堂課'}
+                    </p>
                   </div>
 
-                  {isRecurring && (
-                    <Field label="重複到">
+                  <div role="radiogroup" aria-label="課程重複方式" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-200 p-1">
+                    {([
+                      { value: 'none', label: '單堂' },
+                      { value: 'weekday', label: '平日連續' },
+                      { value: 'weekly', label: '每週' },
+                    ] as const).map((option) => (
+                      <label
+                        key={option.value}
+                        className={cn(
+                          'flex h-10 cursor-pointer items-center justify-center rounded-lg text-[10px] font-black transition-all',
+                          repeatMode === option.value ? 'bg-white text-[#2a0726] shadow-sm' : 'text-slate-500',
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="repeatMode"
+                          value={option.value}
+                          checked={repeatMode === option.value}
+                          onChange={() => setRepeatMode(option.value)}
+                          className="sr-only"
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+
+                  {repeatMode !== 'none' && (
+                    <Field label="重複到哪一天">
                       <input
                         type="date"
                         value={repeatUntil}
