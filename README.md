@@ -1,5 +1,11 @@
 # SWIMSchedule
 
+## 2026-06-29 教練空檔 Firestore 狀態提升
+- `MainApp` 使用 `onSnapshot(collection(db, 'users'))` 建立單一即時監聽，並將 Coach 文件存入共用 `coaches` state。
+- `GlobalAvailabilityGrid` 改為接收父層 `coaches` prop，不再自行建立 Firestore listener。
+- 個人空檔 Modal 改為接收安全的 `initialAvailability || []` 與 `onSave`，成為純表單元件。
+- `handleSaveMyAvailability` 使用 `auth.currentUser.uid` 與 `updateDoc` 寫入 `users/{uid}.availability`，成功後 Alert；snapshot 會自動同步總表。
+
 ## 2026-06-29 管理員全局教練空檔總表
 - 管理頁的空檔元件正式命名為 `GlobalAvailabilityGrid`，並維持管理員專屬入口。
 - `useEffect` 即時讀取 `users` 集合，只保留角色為 Coach 且具有非空 `availability` 的 `coachesList`。

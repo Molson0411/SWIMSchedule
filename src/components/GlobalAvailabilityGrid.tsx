@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react';
 import { UsersRound, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { normalizeAvailability } from '../lib/availability';
-import { usersService } from '../services/usersService';
 import { UserProfile } from '../types';
 import { TIMETABLE_HOURS, WEEK_DAYS } from './WeeklyTimetable';
 
 interface GlobalAvailabilityGridProps {
   isOpen: boolean;
   onClose: () => void;
+  coaches: UserProfile[];
 }
 
 interface AvailableCoach {
@@ -49,34 +48,10 @@ export function getAvailableCoaches(coachesList: UserProfile[], day: number, tim
     .sort((a, b) => a.coachName.localeCompare(b.coachName));
 }
 
-export function GlobalAvailabilityGrid({ isOpen, onClose }: GlobalAvailabilityGridProps) {
-  const [coachesList, setCoachesList] = useState<UserProfile[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    setIsLoading(true);
-    setError(null);
-    const unsubscribe = usersService.subscribeToUsers(
-      (users) => {
-        setCoachesList(
-          users.filter(
-            (user) => user.role === 'Coach' && Array.isArray(user.availability) && user.availability.length > 0,
-          ),
-        );
-        setIsLoading(false);
-      },
-      () => {
-        setCoachesList([]);
-        setIsLoading(false);
-        setError('讀取教練空檔失敗，請稍後再試。');
-      },
-    );
-
-    return unsubscribe;
-  }, [isOpen]);
+export function GlobalAvailabilityGrid({ isOpen, onClose, coaches }: GlobalAvailabilityGridProps) {
+  const coachesList = coaches.filter(
+    (coach) => Array.isArray(coach.availability) && coach.availability.length > 0,
+  );
 
   return (
     <AnimatePresence>
@@ -117,8 +92,6 @@ export function GlobalAvailabilityGrid({ isOpen, onClose }: GlobalAvailabilityGr
             </header>
 
             <div className="relative flex-1 overflow-auto bg-slate-50 p-3 sm:p-5">
-              {error && <div className="mb-3 border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
-
               <table className="w-full min-w-[1120px] table-fixed border-collapse border border-slate-300 bg-white text-left text-xs text-slate-700">
                 <thead>
                   <tr>
@@ -154,11 +127,6 @@ export function GlobalAvailabilityGrid({ isOpen, onClose }: GlobalAvailabilityGr
                 </tbody>
               </table>
 
-              {isLoading && (
-                <div className="pointer-events-none sticky bottom-2 mt-[-40px] flex justify-center">
-                  <span className="rounded-md bg-[#2a0726] px-4 py-2 text-xs font-bold text-white shadow-lg">正在載入教練空檔...</span>
-                </div>
-              )}
             </div>
           </motion.section>
         </div>

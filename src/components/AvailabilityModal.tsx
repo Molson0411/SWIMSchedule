@@ -1,15 +1,14 @@
-import { useEffect, useState } from 'react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { AlertCircle, CalendarClock, CheckCircle2, Plus, Save, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, CalendarClock, Plus, Save, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { db } from '../lib/firebase';
 import { createAvailabilitySlot, createDefaultAvailability, normalizeAvailability } from '../lib/availability';
 import { AvailabilityDay, AvailabilityTimeSlot } from '../types';
 
 interface AvailabilityModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userId: string;
+  initialAvailability: AvailabilityDay[];
+  onSave: (availability: AvailabilityDay[]) => Promise<void>;
 }
 
 export function validateAvailability(availability: AvailabilityDay[]) {
@@ -34,46 +33,19 @@ export function validateAvailability(availability: AvailabilityDay[]) {
   return null;
 }
 
-export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModalProps) {
+export function AvailabilityModal({ isOpen, onClose, initialAvailability, onSave }: AvailabilityModalProps) {
   const [availability, setAvailability] = useState<AvailabilityDay[]>(createDefaultAvailability);
-  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
-    if (!isOpen || !userId) return;
-
-    let isActive = true;
-    setIsLoading(true);
-    setError(null);
-    setAvailability(createDefaultAvailability());
-
-    getDoc(doc(db, 'users', userId))
-      .then((userSnapshot) => {
-        if (isActive) {
-          setAvailability(normalizeAvailability(userSnapshot.data()?.availability));
-        }
-      })
-      .catch((loadError) => {
-        console.error('Failed to load availability:', loadError);
-        if (isActive) setError('讀取可排課時間失敗，請稍後再試。');
-      })
-      .finally(() => {
-        if (isActive) setIsLoading(false);
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [isOpen, userId]);
-
-  useEffect(() => {
-    if (!toast) return;
-
-    const timer = window.setTimeout(() => setToast(null), 2500);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
+    if (isOpen && !wasOpen.current) {
+      setError(null);
+      setAvailability(normalizeAvailability(initialAvailability));
+    }
+    wasOpen.current = isOpen;
+  }, [initialAvailability, isOpen]);
 
   const updateAvailabilitySlot = (day: number, slotId: string, updates: Partial<AvailabilityTimeSlot>) => {
     setAvailability((currentAvailability) =>
@@ -128,8 +100,7 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
     try {
       setIsSaving(true);
       setError(null);
-      await updateDoc(doc(db, 'users', userId), { availability });
-      setToast('時間設定已更新');
+      await onSave(availability);
       onClose();
     } catch (saveError) {
       console.error('Failed to save availability:', saveError);
@@ -186,12 +157,9 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
                   </div>
                 )}
 
-                {isLoading ? (
-                  <div className="py-16 text-center text-sm font-bold text-slate-400">正在讀取時間設定...</div>
-                ) : (
-                  <div className="divide-y divide-slate-200 border-y border-slate-200">
-                    {availability.map((item) => (
-                      <div key={item.day} className="py-3">
+                <div className="divide-y divide-slate-200 border-y border-slate-200">
+                  {availability.map((item) => (
+                    <div key={item.day} className="py-3">
                         <div className="flex min-h-10 items-center justify-between gap-3">
                           <label className="flex cursor-pointer items-center gap-3 text-sm font-black text-slate-700">
                             <input
@@ -249,17 +217,16 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
                             </button>
                           </div>
                         )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <footer className="border-t border-slate-200 bg-white p-4">
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={isLoading || isSaving}
+                  disabled={isSaving}
                   className="flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#d5f4d8] text-sm font-black text-[#2a0726] shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save size={18} />
@@ -268,22 +235,6 @@ export function AvailabilityModal({ isOpen, onClose, userId }: AvailabilityModal
               </footer>
             </motion.section>
           </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            role="status"
-            aria-live="polite"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 left-1/2 z-[120] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md bg-[#2a0726] px-4 py-3 text-sm font-bold text-white shadow-xl"
-          >
-            <CheckCircle2 size={17} className="text-[#d5f4d8]" />
-            {toast}
-          </motion.div>
         )}
       </AnimatePresence>
     </>

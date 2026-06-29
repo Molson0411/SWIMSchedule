@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BottomNavigation } from './components/BottomNavigation';
 import { LessonForm } from './components/LessonForm';
@@ -11,7 +12,7 @@ import { AvailabilityModal } from './components/AvailabilityModal';
 import { GlobalAvailabilityGrid } from './components/GlobalAvailabilityGrid';
 import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
-import { Lesson } from './types';
+import { AvailabilityDay, Lesson, UserProfile } from './types';
 import { format } from 'date-fns';
 import {
   ChevronLeft,
@@ -26,6 +27,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getExternalBrowserUrl, isInAppBrowser } from './lib/utils';
+import { auth, db } from './lib/firebase';
+
+const EMPTY_AVAILABILITY: AvailabilityDay[] = [];
 
 function LoginScreen({ signIn }: { signIn: () => Promise<void> }) {
   const isBlockedLoginBrowser = isInAppBrowser();
@@ -99,6 +103,7 @@ function MainApp() {
   const [isWeeklyTimetableOpen, setIsWeeklyTimetableOpen] = useState(false);
   const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
   const [isGlobalAvailabilityOpen, setIsGlobalAvailabilityOpen] = useState(false);
+  const [coaches, setCoaches] = useState<UserProfile[]>([]);
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
@@ -125,6 +130,30 @@ function MainApp() {
       setLessons([]);
     }
   }, [user, selectedDate]);
+
+  useEffect(() => {
+    if (!user) {
+      setCoaches([]);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const users = snapshot.docs.map((userDoc) => {
+          const data = userDoc.data() as Partial<UserProfile>;
+          return { ...data, uid: data.uid || userDoc.id } as UserProfile;
+        });
+        setCoaches(users.filter((candidate) => candidate.role === 'Coach'));
+      },
+      (error) => {
+        console.error('Failed to subscribe to coaches:', error);
+        setCoaches([]);
+      },
+    );
+
+    return unsubscribe;
+  }, [user]);
 
   if (authLoading) {
     return (
@@ -179,6 +208,17 @@ function MainApp() {
     }
   };
 
+  const handleSaveMyAvailability = async (newAvailability: AvailabilityDay[]) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      window.alert('請先登入後再儲存時間設定。');
+      throw new Error('尚未登入。');
+    }
+
+    await updateDoc(doc(db, 'users', uid), { availability: newAvailability });
+    window.alert('時間設定已更新');
+  };
+
   const pageTitle =
     activeTab === 'schedule'
       ? '課程排程'
@@ -189,6 +229,10 @@ function MainApp() {
           : activeTab === 'admin'
             ? '使用者管理'
             : '個人資料';
+  const currentUserAvailability =
+    coaches.find((coach) => coach.uid === user.uid)?.availability
+    ?? profile?.availability
+    ?? EMPTY_AVAILABILITY;
 
   return (
     <div className="min-h-screen bg-bg-ivory pb-32">
@@ -452,12 +496,14 @@ function MainApp() {
       <AvailabilityModal
         isOpen={isAvailabilityOpen}
         onClose={() => setIsAvailabilityOpen(false)}
-        userId={user.uid}
+        initialAvailability={currentUserAvailability}
+        onSave={handleSaveMyAvailability}
       />
 
       <GlobalAvailabilityGrid
         isOpen={isGlobalAvailabilityOpen}
         onClose={() => setIsGlobalAvailabilityOpen(false)}
+        coaches={coaches}
       />
     </div>
   );
