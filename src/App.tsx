@@ -7,6 +7,7 @@ import { PoolMonitor } from './components/PoolMonitor';
 import { MonthlyReport } from './components/MonthlyReport';
 import { UserManagement } from './components/UserManagement';
 import { WeeklyVenueSchedule } from './components/WeeklyVenueSchedule';
+import { WeeklyTimetable } from './components/WeeklyTimetable';
 import { OnboardingModal } from './components/OnboardingModal';
 import { lessonsService } from './services/lessonsService';
 import { Lesson } from './types';
@@ -20,6 +21,7 @@ import {
   LogOut,
   Plus,
   ShieldCheck,
+  Table2,
   User,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -95,6 +97,7 @@ function MainApp() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isWeeklyScheduleOpen, setIsWeeklyScheduleOpen] = useState(false);
+  const [isWeeklyTimetableOpen, setIsWeeklyTimetableOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | undefined>();
 
   useEffect(() => {
@@ -249,15 +252,24 @@ function MainApp() {
               exit={{ opacity: 0, x: 20 }}
               className="p-6 space-y-6"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-xl font-bold text-slate-900">泳池使用概況</h2>
-                <button
-                  onClick={() => setIsWeeklyScheduleOpen(true)}
-                  className="h-10 px-4 bg-primary text-slate-900 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 active:scale-95 transition-all"
-                >
-                  <Calendar size={14} />
-                  週場地表
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => setIsWeeklyTimetableOpen(true)}
+                    className="flex h-10 items-center gap-2 rounded-lg bg-[#2a0726] px-3 text-[10px] font-black text-white shadow-lg active:scale-95 transition-all"
+                  >
+                    <Table2 size={14} />
+                    一週總表
+                  </button>
+                  <button
+                    onClick={() => setIsWeeklyScheduleOpen(true)}
+                    className="flex h-10 items-center gap-2 rounded-lg bg-primary px-3 text-[10px] font-black text-slate-900 shadow-lg shadow-primary/20 active:scale-95 transition-all"
+                  >
+                    <Calendar size={14} />
+                    場地週表
+                  </button>
+                </div>
               </div>
 
               <PoolMonitor lessons={lessons} baseDate={selectedDate} />
@@ -265,6 +277,12 @@ function MainApp() {
               <WeeklyVenueSchedule
                 isOpen={isWeeklyScheduleOpen}
                 onClose={() => setIsWeeklyScheduleOpen(false)}
+                baseDate={selectedDate}
+              />
+
+              <WeeklyTimetable
+                isOpen={isWeeklyTimetableOpen}
+                onClose={() => setIsWeeklyTimetableOpen(false)}
                 baseDate={selectedDate}
               />
 
