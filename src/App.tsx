@@ -15,6 +15,7 @@ import { lessonsService } from './services/lessonsService';
 import { AvailabilityDay, Lesson, UserProfile } from './types';
 import { format } from 'date-fns';
 import {
+  Calendar,
   ChevronLeft,
   ChevronRight,
   Edit2,
@@ -260,9 +261,21 @@ function MainApp() {
             <button onClick={() => changeDate(-1)} className="p-2 rounded-lg bg-white shadow-sm border border-slate-200 active:scale-90 transition-transform">
               <ChevronLeft size={18} />
             </button>
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">選擇日期</span>
-              <span className="font-mono font-bold text-slate-800 text-sm">
+            <div className="relative flex min-w-[170px] cursor-pointer flex-col items-center justify-center rounded-lg px-4 py-1 transition-colors hover:bg-white">
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  if (event.target.value) setSelectedDate(event.target.value);
+                }}
+                aria-label="快速選擇課程日期"
+                className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+              />
+              <div className="pointer-events-none flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">選擇日期</span>
+                <Calendar size={14} className="text-slate-400" />
+              </div>
+              <span className="pointer-events-none font-mono font-bold text-slate-800 text-sm">
                 {selectedDate === format(new Date(), 'yyyy-MM-dd') ? `今天 / ${selectedDate}` : selectedDate}
               </span>
             </div>
