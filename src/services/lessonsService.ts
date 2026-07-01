@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Lesson, OperationType } from '../types';
+import { getLessonAssignedCoaches } from '../lib/scheduling';
 
 export enum FirestoreOperation {
   CREATE = 'create',
@@ -124,7 +125,6 @@ export const lessonsService = {
     try {
       const q = query(
         collection(db, 'lessons'),
-        where('coachId', '==', coachId),
         where('date', '==', date)
       );
 
@@ -136,6 +136,11 @@ export const lessonsService = {
 
       return existingLessons.some((lesson) => {
         if (excludeLessonId && lesson.id === excludeLessonId) return false;
+        const assignedCoaches = getLessonAssignedCoaches(lesson);
+        const isAssignedCoach = assignedCoaches.length > 0
+          ? assignedCoaches.some((coach) => coach.id === coachId)
+          : lesson.coachId === coachId;
+        if (!isAssignedCoach) return false;
         return hasTimeOverlap(startTime, endTime, lesson.startTime, lesson.endTime);
       });
     } catch (error) {

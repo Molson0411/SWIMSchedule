@@ -1,5 +1,11 @@
 # SWIMSchedule
 
+## 2026-07-01 團班多教練指派
+- 課程新增 `assignedCoaches: [{ id, name }]`，並保留 `coachId/coachName` 作為文件擁有者與舊資料相容欄位。
+- 管理員建立非團班時使用單選教練下拉選單；團班切換為多選 Checkbox，可同時指派主教練與助理教練。
+- 批次寫入前會逐堂、逐位檢查所有被指派教練的時間衝突，泳池容量也會計入實際教練人數。
+- 當日課程、一週總表與泳池監控透過共用 helper 顯示多位教練；舊資料不是陣列時安全回退 `coachName`。
+
 ## 2026-06-29 教練空檔 Firestore 狀態提升
 - `MainApp` 使用 `onSnapshot(collection(db, 'users'))` 建立單一即時監聽，並將 Coach 文件存入共用 `coaches` state。
 - `GlobalAvailabilityGrid` 改為接收父層 `coaches` prop，不再自行建立 Firestore listener。

@@ -488,6 +488,7 @@ function MainApp() {
         isOpen={isFormOpen}
         onClose={handleCloseForm}
         existingLessons={lessons}
+        coaches={coaches}
         editLesson={editingLesson}
       />
 

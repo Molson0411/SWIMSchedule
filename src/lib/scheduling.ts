@@ -1,6 +1,28 @@
 import { addMinutes, format, isWithinInterval, parse } from 'date-fns';
 import { Lesson, PoolType } from '../types';
 
+export function getLessonAssignedCoaches(lesson: Partial<Lesson>) {
+  if (!Array.isArray(lesson.assignedCoaches)) return [];
+
+  return lesson.assignedCoaches.filter(
+    (coach) => coach && typeof coach.id === 'string' && typeof coach.name === 'string',
+  );
+}
+
+export function getLessonCoachNames(lesson: Partial<Lesson>) {
+  const assignedCoachNames = getLessonAssignedCoaches(lesson)
+    .map((coach) => coach.name.trim())
+    .filter(Boolean);
+
+  return assignedCoachNames.length > 0
+    ? assignedCoachNames.join('、')
+    : lesson.coachName?.trim() || '教練未記錄';
+}
+
+export function getLessonCoachCount(lesson: Partial<Lesson>) {
+  return Math.max(getLessonAssignedCoaches(lesson).length, 1);
+}
+
 export const POOL_LIMITS = {
   '25m': { maxPerLane: 8, lanes: 6 },
   'Small': { maxTotal: 30 }
@@ -59,16 +81,16 @@ export function checkCollision(
   if (poolType === '25m') {
     if (!lane) return { conflict: true, message: '請選擇水道' };
     const laneLessons = overlappingLessons.filter(l => l.poolType === '25m' && l.lane === lane);
-    const currentCount = laneLessons.reduce((acc, l) => acc + l.studentCount + 1, 0); // +1 for coach
-    const totalWithNew = currentCount + studentCount + 1;
+    const currentCount = laneLessons.reduce((acc, l) => acc + l.studentCount + getLessonCoachCount(l), 0);
+    const totalWithNew = currentCount + studentCount + getLessonCoachCount(newLesson);
 
     if (totalWithNew > POOL_LIMITS['25m'].maxPerLane) {
       return { conflict: true, message: `第 ${lane} 水道人數已達上限 (${currentCount}/${POOL_LIMITS['25m'].maxPerLane})` };
     }
   } else {
     const smallPoolLessons = overlappingLessons.filter(l => l.poolType === 'Small');
-    const currentCount = smallPoolLessons.reduce((acc, l) => acc + l.studentCount + 1, 0);
-    const totalWithNew = currentCount + studentCount + 1;
+    const currentCount = smallPoolLessons.reduce((acc, l) => acc + l.studentCount + getLessonCoachCount(l), 0);
+    const totalWithNew = currentCount + studentCount + getLessonCoachCount(newLesson);
 
     if (totalWithNew > POOL_LIMITS['Small'].maxTotal) {
       return { conflict: true, message: `小池人數已達上限 (${currentCount}/${POOL_LIMITS['Small'].maxTotal})` };

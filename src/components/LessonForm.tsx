@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Save, AlertCircle, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { addWeeks, format, parseISO } from 'date-fns';
-import { Lesson, LessonType, PoolType } from '../types';
-import { TIME_SLOTS, checkCollision } from '../lib/scheduling';
+import { AssignedCoach, Lesson, LessonType, PoolType, UserProfile } from '../types';
+import { TIME_SLOTS, checkCollision, getLessonAssignedCoaches, getLessonCoachCount } from '../lib/scheduling';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { lessonsService } from '../services/lessonsService';
@@ -16,6 +16,7 @@ interface LessonFormProps {
   isOpen: boolean;
   onClose: () => void;
   existingLessons: Lesson[];
+  coaches: UserProfile[];
   editLesson?: Lesson;
 }
 
@@ -134,7 +135,7 @@ function useCapacityCheck({
 
           return lesson.poolType === 'Small';
         })
-        .reduce((total, lesson) => total + Number(lesson.studentCount || 0) + 1, 0);
+        .reduce((total, lesson) => total + Number(lesson.studentCount || 0) + getLessonCoachCount(lesson), 0);
 
       const usage = current / max;
       const status: CapacityStatus = usage >= 1 ? 'full' : usage >= 0.8 ? 'warning' : 'safe';
@@ -159,12 +160,13 @@ function useCapacityCheck({
   return capacity;
 }
 
-export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: LessonFormProps) {
+export function LessonForm({ isOpen, onClose, existingLessons, coaches, editLesson }: LessonFormProps) {
   const { user, profile } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
   const [repeatUntil, setRepeatUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [selectedCoaches, setSelectedCoaches] = useState<string[]>([]);
 
   const { register, handleSubmit, watch, setValue, reset } = useForm<Partial<Lesson>>({
     defaultValues: createDefaultLessonValues(),
@@ -185,6 +187,9 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
     excludeLessonId: editLesson?.id,
   });
   const isCapacityFull = capacity.status === 'full';
+  const coachOptions = profile?.role === 'Coach' && !coaches.some((coach) => coach.uid === profile.uid)
+    ? [profile, ...coaches]
+    : coaches;
 
   useEffect(() => {
     if (repeatMode === 'none') return;
@@ -201,11 +206,17 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
     setRepeatMode('none');
     setRepeatUntil(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
     setSelectedDays([1, 2, 3, 4, 5]);
+    setSelectedCoaches(profile?.role === 'Admin' ? [] : user?.uid ? [user.uid] : []);
   };
 
   useEffect(() => {
     if (editLesson) {
       reset(editLesson);
+      const assignedCoachIds = Array.isArray(editLesson.assignedCoaches)
+        ? editLesson.assignedCoaches.map((coach) => coach?.id).filter((id): id is string => typeof id === 'string')
+        : [];
+      const initialCoachIds = assignedCoachIds.length > 0 ? assignedCoachIds : editLesson.coachId ? [editLesson.coachId] : [];
+      setSelectedCoaches(editLesson.lessonType === 'Group' ? initialCoachIds : initialCoachIds.slice(0, 1));
     } else {
       resetFormState();
     }
@@ -252,12 +263,25 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
   const buildLessons = (data: Partial<Lesson>) => {
     if (!profile) return [];
 
+    const previousAssignments = Array.isArray(editLesson?.assignedCoaches)
+      ? editLesson.assignedCoaches
+      : [];
+    const coachIdsToAssign = data.lessonType === 'Group' ? selectedCoaches : selectedCoaches.slice(0, 1);
+    const assignedCoaches = coachIdsToAssign.flatMap((coachId): AssignedCoach[] => {
+      const coach = coachOptions.find((option) => option.uid === coachId);
+      const previousCoach = previousAssignments.find((option) => option.id === coachId);
+      const name = coach?.displayName?.trim() || coach?.email || previousCoach?.name;
+      return name ? [{ id: coachId, name }] : [];
+    });
+    const assignedCoachNames = assignedCoaches.map((coach) => coach.name).join('、');
+
     const baseLesson = {
       ...data,
       studentNames: data.studentNames ?? '',
       adminNote: data.adminNote ?? '',
       coachId: editLesson?.coachId || user?.uid || profile.uid,
-      coachName: editLesson?.coachName || profile.displayName || profile.email,
+      coachName: assignedCoachNames || editLesson?.coachName || profile.displayName || profile.email,
+      assignedCoaches,
       status: editLesson ? data.status || editLesson.status : 'Approved',
       checkedIn: editLesson ? Boolean(data.checkedIn) : false,
     };
@@ -309,6 +333,11 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
         return;
       }
 
+      if (selectedCoaches.length === 0) {
+        setError('請至少指派一位教練。');
+        return;
+      }
+
       if (!editLesson && repeatMode !== 'none' && !repeatUntil) {
         setError('請選擇重複課程的結束日期。');
         return;
@@ -355,21 +384,27 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
           return;
         }
 
-        // 將即將送出的課程與 Firestore 中同教練、同日期的既有課程比對。
-        // 時間重疊公式：(新開始 < 既有結束) && (新結束 > 既有開始)。
-        const hasCoachConflict = await lessonsService.checkTimeConflict({
-          coachId: lesson.coachId,
-          date: lesson.date,
-          startTime: lesson.startTime,
-          endTime: lesson.endTime,
-          excludeLessonId: editLesson?.id,
-        });
+        const assignedCoachesToCheck = getLessonAssignedCoaches(lesson);
+        const coachAssignments = assignedCoachesToCheck.length > 0
+          ? assignedCoachesToCheck
+          : [{ id: lesson.coachId, name: lesson.coachName }];
 
-        if (hasCoachConflict) {
-          const message = '您在這個時段已經有排課了，請選擇其他時間！';
-          setError(message);
-          window.alert(message);
-          return;
+        for (const assignedCoach of coachAssignments) {
+          // 時間重疊公式：(新開始 < 既有結束) && (新結束 > 既有開始)。
+          const hasCoachConflict = await lessonsService.checkTimeConflict({
+            coachId: assignedCoach.id,
+            date: lesson.date,
+            startTime: lesson.startTime,
+            endTime: lesson.endTime,
+            excludeLessonId: editLesson?.id,
+          });
+
+          if (hasCoachConflict) {
+            const message = `${assignedCoach.name} 在這個時段已經有排課了，請選擇其他時間！`;
+            setError(message);
+            window.alert(message);
+            return;
+          }
         }
       }
 
@@ -414,6 +449,21 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
         ? currentDays.filter((selectedDay) => selectedDay !== day)
         : [...currentDays, day],
     );
+  };
+
+  const handleCoachToggle = (coachId: string) => {
+    setSelectedCoaches((currentCoaches) =>
+      currentCoaches.includes(coachId)
+        ? currentCoaches.filter((selectedCoachId) => selectedCoachId !== coachId)
+        : [...currentCoaches, coachId],
+    );
+  };
+
+  const handleLessonTypeChange = (type: LessonType) => {
+    setValue('lessonType', type);
+    if (type !== 'Group') {
+      setSelectedCoaches((currentCoaches) => currentCoaches.slice(0, 1));
+    }
   };
 
   return (
@@ -602,17 +652,63 @@ export function LessonForm({ isOpen, onClose, existingLessons, editLesson }: Les
                     <button
                       key={type}
                       type="button"
-                      onClick={() => setValue('lessonType', type)}
+                      onClick={() => handleLessonTypeChange(type)}
                       className={cn(
                         'h-9 rounded-lg border transition-all flex items-center justify-center text-[10px] font-black uppercase',
                         lessonType === type ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-slate-50 text-slate-400 border-slate-100',
                       )}
                     >
-                      {type}
+                      {type === 'Group' ? '團班' : type}
                     </button>
                   ))}
                 </div>
               </Field>
+
+              {profile?.role === 'Admin' && (
+                <Field label="指派教練">
+                  {coachOptions.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs font-bold text-slate-400">
+                      目前沒有可指派的教練
+                    </div>
+                  ) : lessonType === 'Group' ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {coachOptions.map((coach) => {
+                        const isSelected = selectedCoaches.includes(coach.uid);
+                        return (
+                          <label
+                            key={coach.uid}
+                            className={cn(
+                              'flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition-all',
+                              isSelected
+                                ? 'border-[#2a0726] bg-[#d5f4d8] text-[#2a0726]'
+                                : 'border-slate-200 bg-slate-50 text-slate-500',
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleCoachToggle(coach.uid)}
+                              className="h-4 w-4 rounded border-slate-300 accent-[#2a0726]"
+                            />
+                            <span className="min-w-0 truncate">{coach.displayName || coach.email}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedCoaches[0] || ''}
+                      onChange={(event) => setSelectedCoaches(event.target.value ? [event.target.value] : [])}
+                      className={inputClassName}
+                    >
+                      <option value="">請選擇教練</option>
+                      {coachOptions.map((coach) => (
+                        <option key={coach.uid} value={coach.uid}>{coach.displayName || coach.email}</option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+              )}
 
               <Field label="學生人數">
                 <input type="number" min={0} {...register('studentCount', { valueAsNumber: true })} className={inputClassName} readOnly={lessonType !== 'Group'} />

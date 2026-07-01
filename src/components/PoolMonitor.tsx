@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TIME_SLOTS, isLessonInSlot } from '../lib/scheduling';
+import { TIME_SLOTS, getLessonCoachCount, getLessonCoachNames, isLessonInSlot } from '../lib/scheduling';
 import { Lesson } from '../types';
 import { cn } from '../lib/utils';
 import { Waves, Users, Info, X, Clock } from 'lucide-react';
@@ -24,12 +24,12 @@ export function PoolMonitor({ lessons }: PoolMonitorProps) {
       return {
         lane,
         lessons: laneLessons,
-        count: laneLessons.reduce((acc, l) => acc + l.studentCount + 1, 0)
+        count: laneLessons.reduce((acc, l) => acc + l.studentCount + getLessonCoachCount(l), 0)
       };
     });
 
     const smallPoolLessons = activeLessons.filter(l => l.poolType === 'Small');
-    const smallPoolCount = smallPoolLessons.reduce((acc, l) => acc + l.studentCount + 1, 0);
+    const smallPoolCount = smallPoolLessons.reduce((acc, l) => acc + l.studentCount + getLessonCoachCount(l), 0);
 
     return { activeLessons, laneCounts, smallPoolLessons, smallPoolCount };
   };
@@ -227,7 +227,7 @@ export function PoolMonitor({ lessons }: PoolMonitorProps) {
                     <div key={idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-black text-slate-800">{lesson.coachName}</p>
+                          <p className="text-sm font-black text-slate-800">{getLessonCoachNames(lesson)}</p>
                           <span className="text-[10px] font-bold text-slate-400 font-mono bg-white px-1.5 py-0.5 rounded border border-slate-100">
                             {lesson.startTime} - {lesson.endTime}
                           </span>
@@ -243,7 +243,7 @@ export function PoolMonitor({ lessons }: PoolMonitorProps) {
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="text-lg font-black text-slate-300 font-mono">
-                          {lesson.studentCount + 1}
+                          {lesson.studentCount + getLessonCoachCount(lesson)}
                         </span>
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">總負荷</span>
                       </div>

@@ -33,10 +33,16 @@ export type PoolType = '25m' | 'Small';
 export type LessonType = '1:1' | '1:2' | '1:3' | 'Group';
 export type LessonStatus = 'Pending' | 'Approved';
 
+export interface AssignedCoach {
+  id: string;
+  name: string;
+}
+
 export interface Lesson {
   id: string;
   coachId: string;
   coachName: string;
+  assignedCoaches?: AssignedCoach[];
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string; // HH:mm

@@ -4,6 +4,7 @@ import { format, isValid, parse, subMinutes } from 'date-fns';
 import { Lesson } from '../types';
 import { cn } from '../lib/utils';
 import { lessonsService } from '../services/lessonsService';
+import { getLessonCoachNames } from '../lib/scheduling';
 
 interface LessonCardProps {
   lesson: Lesson;
@@ -125,8 +126,8 @@ export const LessonCard: React.FC<LessonCardProps> = ({ lesson, currentUserId, o
 
       <div className="space-y-2">
         <div className="flex items-baseline gap-2">
-          <h3 className="font-black text-slate-900 text-sm">{lesson.coachName || '教練未記錄'}</h3>
-          <span className="text-[10px] text-slate-400 font-medium">教練</span>
+          <h3 className="font-black text-slate-900 text-sm">{getLessonCoachNames(lesson)}</h3>
+          <span className="text-[10px] text-slate-400 font-medium">授課教練</span>
         </div>
 
         <div className="grid grid-cols-2 gap-2">

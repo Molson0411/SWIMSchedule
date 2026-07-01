@@ -4,6 +4,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { lessonsService } from '../services/lessonsService';
 import { Lesson } from '../types';
+import { getLessonCoachNames } from '../lib/scheduling';
 
 interface WeeklyTimetableProps {
   isOpen: boolean;
@@ -57,7 +58,7 @@ export function groupLessonsByDayAndHour(lessons: Lesson[]): TimetableGroups {
   });
 
   groups.forEach((group) => {
-    group.sort((a, b) => a.startTime.localeCompare(b.startTime) || a.coachName.localeCompare(b.coachName));
+    group.sort((a, b) => a.startTime.localeCompare(b.startTime) || getLessonCoachNames(a).localeCompare(getLessonCoachNames(b)));
   });
 
   return groups;
@@ -179,7 +180,7 @@ export function WeeklyTimetable({ isOpen, onClose, baseDate }: WeeklyTimetablePr
                           <td key={`${day}-${hourLabel}`} className="h-20 whitespace-normal break-words border border-slate-300 p-2 align-top">
                             {cellLessons.map((lesson) => (
                               <div key={lesson.id} className="mb-2 border-l-2 border-emerald-400 pl-2 leading-5 last:mb-0">
-                                <span className="font-black text-[#2a0726]">{lesson.coachName}</span>{' '}
+                                <span className="font-black text-[#2a0726]">{getLessonCoachNames(lesson)}</span>{' '}
                                 <span className="font-mono text-[11px] text-slate-500">{lesson.startTime}-{lesson.endTime}</span>
                                 <span className="block text-slate-700">({lesson.studentNames?.trim() || '未填學生姓名'} / {lesson.lessonType})</span>
                               </div>
