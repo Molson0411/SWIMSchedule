@@ -42,6 +42,14 @@ function getGroupKey(dayIndex: number, hour: number) {
   return `${dayIndex}-${String(hour).padStart(2, '0')}:00`;
 }
 
+export function getLessonPoolLocation(lesson: Partial<Lesson>) {
+  if (lesson.poolType === '25m') {
+    return `25M 大池${lesson.lane ? ` 第${lesson.lane}道` : ''}`;
+  }
+
+  return lesson.poolType === 'Small' ? '小池' : '泳池未記錄';
+}
+
 export function groupLessonsByDayAndHour(lessons: Lesson[]): TimetableGroups {
   const groups: TimetableGroups = new Map();
 
@@ -182,7 +190,9 @@ export function WeeklyTimetable({ isOpen, onClose, baseDate }: WeeklyTimetablePr
                               <div key={lesson.id} className="mb-2 border-l-2 border-emerald-400 pl-2 leading-5 last:mb-0">
                                 <span className="font-black text-[#2a0726]">{getLessonCoachNames(lesson)}</span>{' '}
                                 <span className="font-mono text-[11px] text-slate-500">{lesson.startTime}-{lesson.endTime}</span>
-                                <span className="block text-slate-700">({lesson.studentNames?.trim() || '未填學生姓名'} / {lesson.lessonType})</span>
+                                <span className="block text-slate-700">
+                                  ({lesson.studentNames?.trim() || '未填學生姓名'} / {lesson.lessonType}) [{getLessonPoolLocation(lesson)}]
+                                </span>
                               </div>
                             ))}
                           </td>
